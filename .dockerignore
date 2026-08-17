@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+workspace
+database
+models
+logs
+tests
+*.db
+*.sqlite
+*.gguf
+*.tar
+

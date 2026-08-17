@@ -1,0 +1,45 @@
+name: breast-cancer-extractor
+
+services:
+  app:
+    build: .
+    image: breast-cancer-extractor-app:0.1.0
+    restart: unless-stopped
+    environment:
+      OFFLINE_MODE: ${OFFLINE_MODE:-true}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-}
+      DATABASE_PATH: /runtime/database/extractor.db
+      WORKSPACE_PATH: /runtime/workspace
+      MODEL_IMPORT_PATH: /models/llm
+      MAX_SANITIZED_IMAGE_MB: ${MAX_SANITIZED_IMAGE_MB:-25}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8765}:8000"
+    volumes:
+      - ./database:/runtime/database
+      - ./workspace:/runtime/workspace
+      - ./knowledge:/app/knowledge:ro
+      - ./models/llm:/models/llm:ro
+    depends_on:
+      ollama:
+        condition: service_started
+    networks:
+      - internal
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+      - ./models/llm:/models/llm:ro
+    networks:
+      - internal
+    # No host port is published. Only the app container can reach Ollama.
+
+volumes:
+  ollama_models:
+
+networks:
+  internal:
+    driver: bridge
+
