@@ -1,0 +1,15 @@
+version: 0.1.0
+rules:
+  - id: percent_range
+    fields: [ER_percent, PR_percent, Ki67_percent]
+    valid_range: [0, 100]
+    on_failure: REVIEW_REQUIRED
+  - id: her2_ihc_allowed
+    field: HER2_IHC
+    allowed: ["0", "1+", "2+", "3+", "indeterminate"]
+    on_failure: REVIEW_REQUIRED
+  - id: her2_equivocal_without_ish
+    when: "HER2_IHC == '2+' and HER2_ISH is null"
+    message: "HER2 IHC 2+，未发现 ISH/FISH 结果"
+    on_match: REVIEW_REQUIRED
+

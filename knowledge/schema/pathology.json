@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "breast-cancer-extractor/pathology/v0.1.0",
+  "title": "Breast cancer pathology extraction",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "histology": {"type": ["string", "null"]},
+    "histological_grade": {"type": ["integer", "null"], "minimum": 1, "maximum": 3},
+    "tumor_size_mm": {"type": ["number", "null"], "minimum": 0},
+    "lvi": {"enum": ["positive", "negative", "indeterminate", null]},
+    "pni": {"enum": ["positive", "negative", "indeterminate", null]},
+    "lymph_node_positive": {"type": ["integer", "null"], "minimum": 0},
+    "lymph_node_examined": {"type": ["integer", "null"], "minimum": 0},
+    "er_status": {"enum": ["positive", "negative", "indeterminate", null]},
+    "er_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "pr_status": {"enum": ["positive", "negative", "indeterminate", null]},
+    "pr_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "her2_ihc": {"enum": ["0", "1+", "2+", "3+", "indeterminate", null]},
+    "her2_ish": {"enum": ["amplified", "not_amplified", "indeterminate", null]},
+    "ki67_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "explicit_tnm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cT": {"type": ["string", "null"]}, "cN": {"type": ["string", "null"]},
+        "cM": {"type": ["string", "null"]}, "pT": {"type": ["string", "null"]},
+        "pN": {"type": ["string", "null"]}, "pM": {"type": ["string", "null"]},
+        "ypT": {"type": ["string", "null"]}, "ypN": {"type": ["string", "null"]},
+        "ypM": {"type": ["string", "null"]}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "source_text"],
+        "properties": {
+          "field": {"type": "string"}, "source_text": {"type": "string"},
+          "region_id": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
+
