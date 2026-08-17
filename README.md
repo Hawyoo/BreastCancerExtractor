@@ -39,30 +39,309 @@ workspace/patients/<patient_code>/sanitized/<uuid>.png
 
 `OFFLINE_MODE=true` 时程序只允许连接 `ollama`、`localhost` 或回环地址，同时前端 CSP 将网络请求限制到当前本地站点。当前代码没有遥测、CDN、第三方字体或外部错误上报。
 
-## Docker 运行
+## 在一台新 Windows 电脑上安装
 
-要求：Windows 11/10、WSL2、Docker Desktop。
+本节用于从零安装。当前仓库提供的是 **MVP 源码构建版**：可以运行患者管理、浏览器内裁剪/脱敏/ROI、审计基础和本地 Ollama 接口；PaddleOCR、自动 LLM 抽取任务队列、Excel 导出及制作好的离线安装包仍未完成。首次测试请勿使用真实病历，先使用无身份信息的模拟图片验证环境。
 
-1. 复制 `.env.example` 为 `.env`，按需修改端口；
-2. 双击 `start.bat`，或运行：
+### 1. 安装前检查
+
+建议准备：
+
+- 64 位 Windows 11，或仍受 Docker 支持的 64 位 Windows 10；
+- BIOS/UEFI 已启用 CPU virtualization；可在“任务管理器 → 性能 → CPU”确认“虚拟化：已启用”；
+- 内存最低 8 GB；本项目实际使用建议 32 GB 以上，计划运行本地视觉/语言模型建议 64 GB；
+- 系统盘和项目盘预留足够空间。Docker 镜像、Ollama 运行模型及手工保留的 GGUF 可能重复占用空间，建议至少预留 50 GB，实际按模型数量增加；
+- 新电脑第一次安装 WSL、Docker 镜像及模型时需要互联网；处理真实病历时可断网；
+- 医院或大型机构使用 Docker Desktop 前，需要由信息部门核对 [Docker Desktop 许可条款与适用订阅](https://docs.docker.com/desktop/setup/install/windows-install/)。
+
+Docker 当前要求 WSL 2.1.5 或更高版本，并列出了受支持的 Windows 版本和硬件要求；安装前以 [Docker Desktop for Windows 官方页面](https://docs.docker.com/desktop/setup/install/windows-install/) 的实时说明为准。
+
+### 2. 安装或更新 WSL2
+
+1. 在开始菜单搜索 `PowerShell`；
+2. 右键选择“以管理员身份运行”；
+3. 执行：
+
+```powershell
+wsl --install
+```
+
+4. 命令完成后重启电脑；
+5. 重启后再次以管理员身份打开 PowerShell，执行：
+
+```powershell
+wsl --update
+wsl --version
+wsl --status
+```
+
+Microsoft 的标准流程是管理员 PowerShell 执行 `wsl --install` 后重启，详见 [Microsoft WSL 安装说明](https://learn.microsoft.com/windows/wsl/install)。如果电脑已经安装 WSL，重点执行 `wsl --update`；如果命令提示虚拟化未启用，需要先进入 BIOS/UEFI 开启 Intel VT-x/AMD-V，再回到本步骤。
+
+### 3. 安装 Docker Desktop
+
+1. 从 [Docker Desktop for Windows 官方页面](https://docs.docker.com/desktop/setup/install/windows-install/) 下载安装程序；
+2. 运行安装程序，使用默认的 WSL 2 backend；
+3. 安装结束后从开始菜单启动 Docker Desktop；
+4. 等待左下角或主界面显示 Docker Engine 正在运行；
+5. 在 Docker Desktop 的 `Settings → General` 中确认使用 WSL 2 based engine。新版在兼容电脑上通常默认开启；
+6. 打开普通 PowerShell，验证：
+
+```powershell
+docker version
+docker compose version
+```
+
+两个命令都应返回版本信息。若只显示客户端信息、提示无法连接 daemon，通常是 Docker Desktop 尚未启动。WSL2 后端的官方设置方法见 [Docker WSL2 backend](https://docs.docker.com/desktop/features/wsl/)。
+
+> 本项目运行 Linux 容器，不需要切换到 Windows containers。Docker Desktop 不要求登录账号才能运行本地容器；但离线状态下依赖联网的 Docker 功能不可用，参见 [Docker Desktop offline FAQ](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/general/)。
+
+### 4. 获取 GitHub 轻量版项目
+
+可以任选一种方式。
+
+方法 A——GitHub Desktop：
+
+1. 在 GitHub Desktop 中选择 `File → Clone repository`；
+2. 选择 `BreastCancerExtractor` 仓库；
+3. 建议克隆到空间充足、权限正常的目录，例如 `D:\Documents\GitHub\BreastCancerExtractor`；
+4. 点击 `Clone`。
+
+方法 B——下载 ZIP：
+
+1. 在 GitHub 仓库页面选择 `Code → Download ZIP`；
+2. 下载后完整解压，不要直接在压缩包预览窗口运行；
+3. 建议解压到 `D:\BreastCancerExtractor` 等固定目录。
+
+不要把项目放在会自动上传云端的 OneDrive、网盘或公共共享目录中。代码目录可以迁移，但 `database/` 和 `workspace/` 建立后不可随意删除。
+
+### 5. 创建本机配置
+
+打开项目目录，在文件资源管理器地址栏输入 `powershell` 并回车，然后执行：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+首次安装建议保持 `.env` 默认内容：
+
+```dotenv
+APP_PORT=8765
+OFFLINE_MODE=true
+OLLAMA_URL=http://ollama:11434
+DEFAULT_LLM_MODEL=
+MAX_SANITIZED_IMAGE_MB=25
+```
+
+含义：
+
+- `APP_PORT`：浏览器访问端口；首次安装先不要修改；
+- `OFFLINE_MODE=true`：应用只允许使用本地/容器内 Ollama；
+- `OLLAMA_URL`：Compose 内部地址，不要改成互联网地址；
+- `DEFAULT_LLM_MODEL`：模型导入后再填写其 Ollama 名称；
+- `MAX_SANITIZED_IMAGE_MB`：单张脱敏 PNG 的大小上限。
+
+`.env`、患者数据和模型均已被 `.gitignore` 排除，不得手工提交到 GitHub。
+
+### 6. 第一次启动
+
+确保 Docker Desktop 正在运行，然后双击项目根目录的 `start.bat`。也可以在项目目录的 PowerShell 中执行：
 
 ```powershell
 docker compose up -d --build
 ```
 
-3. 打开 <http://127.0.0.1:8765>；
-4. 停止时双击 `stop.bat`。
+第一次启动会下载基础镜像并构建应用，所需时间取决于网络和电脑性能。命令完成后打开：
 
-持久化目录会在首次启动时自动出现：
+<http://127.0.0.1:8765>
 
-```text
-database/       SQLite（禁止提交）
-workspace/      脱敏图及运行文件（禁止提交）
-models/llm/     用户维护的 GGUF 仓库（禁止提交）
-local_knowledge/ 授权或医院内部知识（禁止提交）
+检查容器：
+
+```powershell
+docker compose ps
 ```
 
-Ollama 的运行模型位于 Docker 命名卷 `ollama_models`；不要直接修改该卷内部结构。将 `.gguf` 放入 `models/llm/` 后，通过后续模型管理页面或 `/api/models/import` 注册。
+应至少看到 `app` 和 `ollama` 两个服务处于运行状态。再访问健康检查：
+
+<http://127.0.0.1:8765/api/health>
+
+正常情况下会看到包含以下内容的 JSON：
+
+```json
+{
+  "status": "ok",
+  "offline_mode": true,
+  "external_api": "disabled",
+  "llm": "local-ollama"
+}
+```
+
+如果页面打不开，查看日志：
+
+```powershell
+docker compose logs --tail 200 app
+docker compose logs --tail 200 ollama
+```
+
+### 7. 安装本地 LLM 模型
+
+软件可以在没有模型时启动，但 LLM 抽取功能需要 Ollama 模型。模型不要放入 Git，也不要直接修改 Docker 的 `ollama_models` 卷。
+
+#### 方式 A：联网下载 Ollama 模型
+
+在尚未导入真实病历、允许联网的准备阶段执行：
+
+```powershell
+docker compose exec ollama ollama pull <模型名称>
+docker compose exec ollama ollama list
+```
+
+把 `<模型名称>` 替换为实际选择的 Ollama 模型标签。模型选择尚未在本 MVP 中锁定；正式使用前应以脱敏金标准样本比较准确率、JSON 合法率、漏提取和幻觉情况。
+
+#### 方式 B：导入本地 GGUF，适合离线维护
+
+1. 将合法获得的单文件 `.gguf` 复制到：
+
+```text
+models/llm/
+```
+
+2. 查看程序是否扫描到文件：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/api/models/local-files
+```
+
+3. 导入 Ollama；以下示例把文件名和模型名替换为自己的值：
+
+```powershell
+$body = @{
+  filename = "your-model.gguf"
+  model_name = "breast-extractor-model"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8765/api/models/import `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+4. 检查已安装模型：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/api/models/installed
+```
+
+5. 在 `.env` 中设置：
+
+```dotenv
+DEFAULT_LLM_MODEL=breast-extractor-model
+```
+
+6. 重建并重启应用以读取新配置：
+
+```powershell
+docker compose up -d --build
+```
+
+Ollama 导入后的运行模型保存在 Docker 命名卷 `ollama_models`；`models/llm/` 是用户自行维护的原始 GGUF 仓库。二者可能同时占用磁盘。切换模型不会更改已经保存的 AI 结果或人工确认记录。
+
+### 8. 首次功能验证
+
+正式使用前按以下顺序验证：
+
+1. 使用一张完全虚构、无真实身份信息的模拟病理报告图片；
+2. 新建测试患者编号；
+3. 在浏览器中裁剪；
+4. 对模拟姓名和编号使用实心遮盖；
+5. 框选一个或多个 ROI；
+6. 点击完成脱敏并导入；
+7. 刷新患者详情，确认只显示脱敏后的图片；
+8. 检查项目目录，未经脱敏原图不应出现在 `workspace/`；
+9. 确认上述流程无误后，再制定真实病历的受控测试方案。
+
+当前 MVP 尚未完成自动 OCR→LLM→Excel 全流程，因此成功启动不等于全部产品功能已经完成。
+
+### 9. 日常启动与停止
+
+日常启动：
+
+1. 启动 Docker Desktop；
+2. 双击 `start.bat`；
+3. 浏览器打开 <http://127.0.0.1:8765>。
+
+日常停止可双击 `stop.bat`，或执行：
+
+```powershell
+docker compose stop
+```
+
+停止容器不会删除数据库、脱敏图片或模型。不要使用 `docker compose down -v`，因为 `-v` 会删除 Ollama 模型卷。
+
+### 10. 更新 GitHub 轻量版
+
+更新前先关闭系统并备份下述持久化内容。使用 GitHub Desktop 时先查看本地修改，确认没有把患者数据加入版本控制，然后执行 `Fetch origin/Pull origin`。更新代码后运行：
+
+```powershell
+docker compose up -d --build
+```
+
+程序升级、知识库升级和模型升级是三件独立的事情。不要因为更新代码而删除 `database/`、`workspace/`、`models/` 或 Docker 的 `ollama_models` 卷。
+
+### 11. 数据备份与迁移
+
+至少备份：
+
+```text
+database/        SQLite 数据库、人工修改和审计记录
+workspace/       已确认脱敏的图片、ROI 和运行文件
+local_knowledge/ 本机授权资料和医院内部字典
+models/llm/      用户保留的原始 GGUF（如需）
+.env             本机配置
+```
+
+备份前先运行 `stop.bat`，避免复制正在写入的 SQLite 文件。未经安全评估，不要把备份放到普通网盘。Ollama 已导入模型位于 Docker 卷中；如果原始 GGUF 仍在 `models/llm/`，新电脑可重新导入，否则需要另行导出/备份 Docker 卷。
+
+### 12. 离线版安装说明
+
+**当前仓库尚未发布可直接交付医院的离线版安装包。** 在离线版正式发布前，不要只复制 GitHub ZIP 到断网电脑，因为 WSL、Docker Desktop、容器镜像和模型仍可能需要在线获取。
+
+计划中的离线版将包含或配套提供：
+
+```text
+BreastCancerExtractor-Offline-<version>/
+├─ docker-images/          已导出的 app 与 Ollama 镜像 tar
+├─ models/llm/             许可允许分发的推荐模型，或独立模型介质
+├─ knowledge/              公开知识库
+├─ compose.yaml
+├─ .env.example
+├─ start-offline.bat
+├─ stop.bat
+└─ README-离线安装.md
+```
+
+离线电脑仍需预先安装兼容的 WSL2 和 Docker 运行环境。医院信息部门还需要核对 Docker Desktop 许可、终端安全策略、磁盘加密、账户权限和移动介质流程。正式离线包应在一台从未缓存过本项目镜像的断网电脑上完成验收后再发布。
+
+### 13. 卸载或彻底移除
+
+如果只是暂时停用，执行 `stop.bat` 即可，不需要卸载。
+
+若要卸载应用但保留数据：
+
+1. 执行 `stop.bat`；
+2. 备份 `database/`、`workspace/`、`local_knowledge/`、`.env` 和需要保留的 GGUF；
+3. 执行 `docker compose down`；
+4. 可以删除代码目录，但不要删除尚未备份的持久化数据。
+
+若确认要永久删除应用及 Ollama 模型卷，可在项目目录执行：
+
+```powershell
+docker compose down -v
+```
+
+这是破坏性操作：`-v` 会删除本项目的 Ollama 模型卷，通常无法恢复；项目目录中的 `database/` 和 `workspace/` 是 bind mount，仍需在确认备份和目标路径无误后由用户单独删除。本项目不会自动删除患者数据。
+
+只有在该电脑不再运行任何其他容器应用时，才考虑通过 Windows“设置 → 应用”卸载 Docker Desktop；卸载 Docker Desktop 可能影响同机其他 Docker 项目。WSL 也可能被其他软件使用，不应为了卸载本项目而直接删除 WSL。
 
 ## 本地开发（uv）
 
