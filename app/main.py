@@ -193,15 +193,21 @@ def create_observation(patient_id: int, payload: ObservationCreate) -> dict[str,
     require_patient(patient_id)
     observation_id = uuid.uuid4().hex
     now = utc_now()
-    status = "REVIEW_REQUIRED" if payload.confidence in {"LOW", "MEDIUM"} else "AI_PROCESSED"
+    status = (
+        "REVIEW_REQUIRED"
+        if payload.source_mode == "INFERRED" or payload.confidence in {"LOW", "MEDIUM"}
+        else "AI_PROCESSED"
+    )
     with connect() as db:
         db.execute(
             """INSERT INTO observations
                (id,patient_id,document_id,region_id,field_name,ai_value,current_value,raw_text,
-                confidence,status,model_name,model_digest,prompt_version,ocr_version,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                confidence,status,source_mode,derivation_json,ruleset_version,model_name,model_digest,
+                prompt_version,ocr_version,created_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (observation_id, patient_id, payload.document_id, payload.region_id, payload.field_name,
-             payload.value, payload.value, payload.raw_text, payload.confidence, status,
+             payload.value, payload.value, payload.raw_text, payload.confidence, status, payload.source_mode,
+             json.dumps(payload.inference_basis, ensure_ascii=False), payload.ruleset_version,
              payload.model_name, payload.model_digest, payload.prompt_version, payload.ocr_version,
              now, now),
         )
@@ -209,7 +215,8 @@ def create_observation(patient_id: int, payload: ObservationCreate) -> dict[str,
             """INSERT INTO audit_log
                (patient_id,document_id,field_name,operation,new_value,operator,model_name,model_digest,timestamp)
                VALUES(?,?,?,?,?,?,?,?,?)""",
-            (patient_id, payload.document_id, payload.field_name, "AI_EXTRACT", payload.value, "AI",
+            (patient_id, payload.document_id, payload.field_name,
+             "AI_INFER" if payload.source_mode == "INFERRED" else "AI_EXTRACT", payload.value, "AI",
              payload.model_name, payload.model_digest, now),
         )
         db.execute("UPDATE patients SET status=?,updated_at=? WHERE id=?", (status, now, patient_id))

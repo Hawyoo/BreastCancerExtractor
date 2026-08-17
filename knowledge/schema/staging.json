@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "breast-cancer-extractor/staging/v0.2.0",
+  "title": "Breast cancer TNM assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["context", "source_mode", "ruleset", "components", "stage_group", "evidence", "needs_review"],
+  "properties": {
+    "context": {
+      "enum": ["CLINICAL", "PATHOLOGICAL", "POST_NEOADJUVANT_CLINICAL", "POST_NEOADJUVANT_PATHOLOGICAL"]
+    },
+    "source_mode": {"enum": ["RECORDED", "INFERRED", "UNDETERMINED"]},
+    "ruleset": {
+      "type": "object",
+      "required": ["system", "edition", "effective_for_diagnosis_date"],
+      "properties": {
+        "system": {"const": "AJCC"},
+        "edition": {"type": "string"},
+        "effective_for_diagnosis_date": {"type": ["string", "null"]}
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["T", "N", "M"],
+      "properties": {
+        "T": {"type": ["string", "null"]},
+        "N": {"type": ["string", "null"]},
+        "M": {"type": ["string", "null"]}
+      }
+    },
+    "stage_group": {"type": ["string", "null"]},
+    "stage_group_type": {"enum": ["ANATOMIC", "PROGNOSTIC", "NOT_SPECIFIED", null]},
+    "recorded_text": {"type": ["string", "null"]},
+    "inference_basis": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["component", "fact", "source_text"],
+        "properties": {
+          "component": {"enum": ["T", "N", "M", "STAGE_GROUP"]},
+          "fact": {"type": "string"},
+          "source_text": {"type": "string"},
+          "document_id": {"type": ["string", "null"]},
+          "region_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+    "conflicts": {"type": "array", "items": {"type": "string"}},
+    "needs_review": {"const": true}
+  }
+}

@@ -1,0 +1,194 @@
+version: 0.2.0
+title: 乳腺癌科研队列字段字典
+null_policy:
+  missing: null
+  unknown: UNKNOWN
+  not_applicable: NOT_APPLICABLE
+common_types:
+  yes_no_unknown: [YES, NO, UNKNOWN]
+  laterality: [LEFT, RIGHT, BILATERAL, UNKNOWN]
+  confidence: [LOW, MEDIUM, HIGH, VERIFIED]
+notes:
+  - 字段顺序即默认宽表导出顺序。
+  - 带“补充填空”的字段保留原文，不覆盖对应的标准化字段。
+  - 每个非空 AI 字段均须关联 document_id、region_id、source_text 和模型版本。
+  - record_number 与 contact 是直接身份标识，不得从已脱敏图片自动抽取。
+
+fields:
+  # 基本信息、生活史与既往史
+  - {key: record_number, label: 病案号（7位）, group: demographics, type: string, pattern: '^\d{7}$', capture: manual_restricted, sensitivity: direct_identifier}
+  - {key: sex, label: 性别, group: demographics, type: enum, values: [FEMALE, MALE, OTHER, UNKNOWN]}
+  - {key: contact, label: 联系方式, group: demographics, type: string, capture: manual_restricted, sensitivity: direct_identifier}
+  - {key: birth_date, label: 出生日期, group: demographics, type: date, sensitivity: quasi_identifier}
+  - {key: height_cm, label: 身高（cm）, group: demographics, type: number, unit: cm}
+  - {key: weight_kg, label: 体重（kg）, group: demographics, type: number, unit: kg}
+  - {key: menarche_age, label: 初潮年龄, group: reproductive_history, type: integer, unit: years}
+  - {key: menopausal_status, label: 是否绝经, group: reproductive_history, type: yes_no_unknown}
+  - {key: menopause_age, label: 绝经年龄, group: reproductive_history, type: integer, unit: years}
+  - {key: occupation, label: 职业, group: demographics, type: string, sensitivity: quasi_identifier}
+  - {key: has_chronic_disease, label: 是否有慢性病史, group: medical_history, type: yes_no_unknown}
+  - {key: chronic_disease, label: 慢性病史, group: medical_history, type: multiselect}
+  - {key: chronic_disease_other, label: '慢性病史:其他-补充填空', group: medical_history, type: string}
+  - {key: has_family_history, label: 是否有家族史, group: family_history, type: yes_no_unknown}
+  - {key: family_history_detail, label: '是否有家族史:补充填空', group: family_history, type: string}
+  - {key: has_given_birth, label: 是否生育, group: reproductive_history, type: yes_no_unknown}
+  - {key: parity_count, label: 生育胎数, group: reproductive_history, type: integer}
+  - {key: childbirth_age, label: 生育年龄, group: reproductive_history, type: integer, unit: years}
+  - {key: smoking_history, label: 是否有吸烟史, group: lifestyle, type: yes_no_unknown}
+  - {key: drinking_history, label: 是否有饮酒史, group: lifestyle, type: yes_no_unknown}
+  - {key: first_breast_cancer, label: 是否首次患乳腺癌, group: medical_history, type: yes_no_unknown}
+  - {key: prior_breast_surgery, label: 既往是否有乳腺手术史, group: medical_history, type: yes_no_unknown}
+  - {key: prior_breast_surgery_date, label: 既往手术时间, group: medical_history, type: date_or_partial_date}
+  - {key: prior_breast_surgery_type, label: 既往手术术式, group: medical_history, type: string}
+  - {key: concurrent_other_cancer, label: 入院时是否合并其他癌种, group: medical_history, type: yes_no_unknown}
+  - {key: concurrent_other_cancer_detail, label: '入院时是否合并其他癌种:补充填空', group: medical_history, type: string}
+  - {key: breast_laterality, label: 乳腺癌偏侧性, group: diagnosis, type: laterality}
+  - {key: metastatic_at_presentation, label: 乳腺癌来院时是否转移, group: diagnosis, type: yes_no_unknown}
+  - {key: metastatic_site, label: 转移部位, group: diagnosis, type: multiselect}
+
+  # 治疗前影像
+  - {key: pre_us_available, label: 治疗前是否有超声结果, group: pretreatment_ultrasound, type: yes_no_unknown}
+  - {key: pre_us_tumor_size_mm, label: 超声肿块大小（mm）, group: pretreatment_ultrasound, type: measurement, unit: mm}
+  - {key: pre_us_tumor_location, label: 超声肿块位置, group: pretreatment_ultrasound, type: string}
+  - {key: pre_us_nipple_distance_cm, label: 超声肿块距乳头距离（cm）, group: pretreatment_ultrasound, type: number, unit: cm}
+  - {key: pre_us_skin_distance, label: 超声肿块距皮肤距离, group: pretreatment_ultrasound, type: measurement, needs_definition: true}
+  - {key: pre_us_nodes_normal, label: 超声淋巴结是否正常, group: pretreatment_ultrasound, type: yes_no_unknown}
+  - {key: pre_us_nodes_detail, label: '超声淋巴结是否正常:补充填空', group: pretreatment_ultrasound, type: string}
+  - {key: pre_mmg_available, label: 治疗前是否有钼靶结果, group: pretreatment_mammography, type: yes_no_unknown}
+  - {key: pre_mmg_single_lesion, label: 肿块是否单发, group: pretreatment_mammography, type: yes_no_unknown}
+  - {key: pre_mmg_birads, label: 钼靶BI-RADS分级, group: pretreatment_mammography, type: enum, values: [BI-RADS 0, BI-RADS 1, BI-RADS 2, BI-RADS 3, BI-RADS 4A, BI-RADS 4B, BI-RADS 4C, BI-RADS 5, BI-RADS 6, UNKNOWN]}
+  - {key: pre_mmg_birads_detail, label: '钼靶BI-RADS分级:补充填空', group: pretreatment_mammography, type: string}
+  - {key: pre_mmg_calcification, label: 是否有钙化, group: pretreatment_mammography, type: yes_no_unknown}
+  - {key: pre_mmg_nodes, label: 钼靶淋巴结情况, group: pretreatment_mammography, type: string}
+  - {key: pre_mmg_other_single, label: 其他单发钼靶结果, group: pretreatment_mammography, type: string}
+  - {key: pre_mmg_multifocal, label: 多发钼靶结果, group: pretreatment_mammography, type: string}
+  - {key: pre_mri_available, label: 治疗前是否有磁共振结果, group: pretreatment_mri, type: yes_no_unknown}
+  - {key: pre_mri_tumor_size_mm, label: 磁共振肿块大小（mm）, group: pretreatment_mri, type: measurement, unit: mm}
+  - {key: pre_mri_nodes_normal, label: 磁共振淋巴结是否正常, group: pretreatment_mri, type: yes_no_unknown}
+  - {key: pre_mri_nodes_detail, label: '磁共振淋巴结是否正常:补充填空', group: pretreatment_mri, type: string}
+  - {key: other_pretreatment_imaging, label: 其他治疗前影像结果, group: pretreatment_imaging, type: string}
+
+  # 原发灶穿刺
+  - {key: primary_biopsy_performed, label: 是否行原发灶穿刺活检, group: primary_biopsy, type: yes_no_unknown}
+  - {key: primary_pathology_type, label: 原发灶病理类型, group: primary_biopsy, type: coded_string}
+  - {key: primary_pathology_grade, label: 原发灶病理分级, group: primary_biopsy, type: enum, values: [G1, G2, G3, GX, UNKNOWN]}
+  - {key: primary_er, label: 原发灶免疫组化ER, group: primary_biopsy, type: biomarker_status}
+  - {key: primary_er_detail, label: '原发灶免疫组化ER:补充填空', group: primary_biopsy, type: string}
+  - {key: primary_pr, label: 原发灶免疫组化PR, group: primary_biopsy, type: biomarker_status}
+  - {key: primary_pr_detail, label: '原发灶免疫组化PR:补充填空', group: primary_biopsy, type: string}
+  - {key: primary_her2, label: 原发灶免疫组化Her-2, group: primary_biopsy, type: her2_ihc}
+  - {key: primary_ki67, label: 原发灶免疫组化Ki-67, group: primary_biopsy, type: biomarker_status}
+  - {key: primary_ki67_detail, label: '原发灶免疫组化Ki-67:补充填空', group: primary_biopsy, type: string}
+  - {key: primary_other_ihc, label: 其他原发灶免疫组化结果, group: primary_biopsy, type: string}
+  - {key: primary_molecular_subtype, label: 原发灶分子分型, group: primary_biopsy, type: coded_string, derivation: allowed_with_rules}
+
+  # 淋巴结穿刺
+  - {key: node_biopsy_performed, label: 是否行淋巴结穿刺活检, group: node_biopsy, type: yes_no_unknown}
+  - {key: node_pathology_type, label: 淋巴结病理类型, group: node_biopsy, type: coded_string}
+  - {key: node_pathology_grade, label: 淋巴结病理分级, group: node_biopsy, type: enum, values: [G1, G2, G3, GX, NOT_APPLICABLE, UNKNOWN]}
+  - {key: node_er, label: 淋巴结免疫组化ER, group: node_biopsy, type: biomarker_status}
+  - {key: node_er_detail, label: '淋巴结免疫组化ER:补充填空', group: node_biopsy, type: string}
+  - {key: node_pr, label: 淋巴结免疫组化PR, group: node_biopsy, type: biomarker_status}
+  - {key: node_pr_detail, label: '淋巴结免疫组化PR:补充填空', group: node_biopsy, type: string}
+  - {key: node_her2, label: 淋巴结免疫组化Her-2, group: node_biopsy, type: her2_ihc}
+  - {key: node_ki67, label: 淋巴结免疫组化Ki-67, group: node_biopsy, type: biomarker_status}
+  - {key: node_ki67_detail, label: '淋巴结免疫组化Ki-67:补充填空', group: node_biopsy, type: string}
+  - {key: node_other_ihc_1, label: 其他淋巴结免疫组化结果_1, group: node_biopsy, type: string}
+  - {key: node_other_ihc_2, label: 其他淋巴结免疫组化结果_2, group: node_biopsy, type: string}
+  - {key: node_molecular_subtype, label: 淋巴结分子分型, group: node_biopsy, type: coded_string, derivation: allowed_with_rules}
+
+  # 转移灶穿刺
+  - {key: metastasis_biopsy_performed, label: 是否行转移灶穿刺活检, group: metastasis_biopsy, type: yes_no_unknown}
+  - {key: metastasis_pathology_type, label: 转移灶病理类型, group: metastasis_biopsy, type: coded_string}
+  - {key: metastasis_pathology_grade, label: 转移灶病理分级, group: metastasis_biopsy, type: enum, values: [G1, G2, G3, GX, NOT_APPLICABLE, UNKNOWN]}
+  - {key: metastasis_er, label: 转移灶免疫组化ER, group: metastasis_biopsy, type: biomarker_status}
+  - {key: metastasis_er_detail, label: '转移灶免疫组化ER:补充填空', group: metastasis_biopsy, type: string}
+  - {key: metastasis_pr, label: 转移灶免疫组化PR, group: metastasis_biopsy, type: biomarker_status}
+  - {key: metastasis_pr_detail, label: '转移灶免疫组化PR:补充填空', group: metastasis_biopsy, type: string}
+  - {key: metastasis_her2, label: 转移灶免疫组化Her-2, group: metastasis_biopsy, type: her2_ihc}
+  - {key: metastasis_ki67, label: 转移灶免疫组化Ki-67, group: metastasis_biopsy, type: biomarker_status}
+  - {key: metastasis_ki67_detail, label: '转移灶免疫组化Ki-67:补充填空', group: metastasis_biopsy, type: string}
+  - {key: metastasis_other_ihc, label: 其他转移灶免疫组化结果, group: metastasis_biopsy, type: string}
+  - {key: metastasis_molecular_subtype, label: 转移灶分子分型, group: metastasis_biopsy, type: coded_string, derivation: allowed_with_rules}
+
+  # 新辅助治疗与治疗后影像
+  - {key: neoadjuvant_received, label: 术前是否接受新辅助治疗, group: neoadjuvant, type: yes_no_unknown}
+  - {key: neoadjuvant_regimen, label: 新辅助治疗方案, group: neoadjuvant, type: regimen}
+  - {key: neoadjuvant_cycles, label: 新辅助治疗周期, group: neoadjuvant, type: integer}
+  - {key: post_neoadj_us_available, label: 新辅助治疗后是否有超声结果, group: post_neoadjuvant_imaging, type: yes_no_unknown}
+  - {key: post_neoadj_us_size_mm, label: 新辅助治疗后超声肿块大小（mm）, group: post_neoadjuvant_imaging, type: measurement, unit: mm}
+  - {key: post_neoadj_us_tumor_response, label: 新辅助治疗后超声肿块是否缓解, group: post_neoadjuvant_imaging, type: response_status, needs_definition: true}
+  - {key: post_neoadj_us_nodes, label: 新辅助治疗后超声淋巴结情况, group: post_neoadjuvant_imaging, type: string}
+  - {key: post_neoadj_us_nodes_response, label: 新辅助治疗后超声淋巴结是否缓解, group: post_neoadjuvant_imaging, type: response_status, needs_definition: true}
+  - {key: post_neoadj_mri_available, label: 新辅助治疗后是否有磁共振结果, group: post_neoadjuvant_imaging, type: yes_no_unknown}
+  - {key: post_neoadj_mri_size_mm, label: 新辅助治疗后磁共振肿块大小（mm）, group: post_neoadjuvant_imaging, type: measurement, unit: mm}
+  - {key: post_neoadj_mri_tumor_response, label: 新辅助治疗后磁共振肿块是否缓解, group: post_neoadjuvant_imaging, type: response_status, needs_definition: true}
+  - {key: post_neoadj_mri_nodes, label: 新辅助治疗后磁共振淋巴结情况, group: post_neoadjuvant_imaging, type: string}
+  - {key: post_neoadj_mri_nodes_response, label: 新辅助治疗后磁共振淋巴结是否缓解, group: post_neoadjuvant_imaging, type: response_status, needs_definition: true}
+
+  # 手术及术后病理
+  - {key: surgery_performed, label: 是否行手术治疗, group: surgery, type: yes_no_unknown}
+  - {key: surgery_date, label: 手术日期, group: surgery, type: date}
+  - {key: surgery_type, label: 手术方式, group: surgery, type: coded_string}
+  - {key: reconstruction_performed, label: 是否重建, group: surgery, type: yes_no_unknown}
+  - {key: reconstruction_type, label: 重建方式, group: surgery, type: coded_string}
+  - {key: postop_tumor_pathology_type, label: 术后肿块病理类型, group: surgical_pathology, type: coded_string}
+  - {key: postop_tumor_pathology_grade, label: 术后肿块病理分级, group: surgical_pathology, type: enum, values: [G1, G2, G3, GX, UNKNOWN]}
+  - {key: postop_tumor_er, label: 术后肿块免疫组化ER, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_tumor_er_detail, label: '术后肿块免疫组化ER:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_tumor_pr, label: 术后肿块免疫组化PR, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_tumor_pr_detail, label: '术后肿块免疫组化PR:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_tumor_her2, label: 术后肿块免疫组化Her-2, group: surgical_pathology, type: her2_ihc}
+  - {key: postop_tumor_ki67, label: 术后肿块免疫组化Ki-67, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_tumor_ki67_detail, label: '术后肿块免疫组化Ki-67:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_tumor_other_ihc, label: 其他术后肿块免疫组化结果, group: surgical_pathology, type: string}
+  - {key: postop_tumor_molecular_subtype, label: 术后肿块分子分型, group: surgical_pathology, type: coded_string, derivation: allowed_with_rules}
+  - {key: postop_node_metastasis, label: 术后病理是否有淋巴结转移, group: surgical_pathology, type: yes_no_unknown}
+  - {key: postop_node_er, label: 术后淋巴结免疫组化ER, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_node_er_detail, label: '术后淋巴结免疫组化ER:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_node_pr, label: 术后淋巴结免疫组化PR, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_node_pr_detail, label: '术后淋巴结免疫组化PR:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_node_her2, label: 术后淋巴结免疫组化Her-2, group: surgical_pathology, type: her2_ihc}
+  - {key: postop_node_ki67, label: 术后淋巴结免疫组化Ki-67, group: surgical_pathology, type: biomarker_status}
+  - {key: postop_node_ki67_detail, label: '术后淋巴结免疫组化Ki-67:补充填空', group: surgical_pathology, type: string}
+  - {key: postop_node_other_ihc, label: 其他术后淋巴结免疫组化结果, group: surgical_pathology, type: string}
+  - {key: postop_node_molecular_subtype, label: 术后淋巴结分子分型, group: surgical_pathology, type: coded_string, derivation: allowed_with_rules}
+  - {key: fish_result, label: FISH结果, group: biomarkers, type: fish_result}
+
+  # 诊断、分期与新辅助疗效
+  - {key: breast_cancer_type, label: 乳腺癌类型, group: diagnosis, type: coded_string}
+  - {key: breast_cancer_diagnosis_date, label: 乳腺癌确诊日期, group: diagnosis, type: date_or_partial_date}
+  - {key: clinical_stage, label: 临床分期, group: staging, type: stage_assessment, derivation: recorded_then_inferred}
+  - {key: pathological_stage, label: 病理分期, group: staging, type: stage_assessment, derivation: recorded_then_inferred}
+  - {key: post_neoadj_pcr, label: '术后新辅助评估:是否pCR', group: treatment_response, type: yes_no_unknown, needs_definition: true}
+  - {key: post_neoadj_mp_grade, label: '术后新辅助评估:MP分级', group: treatment_response, type: enum, values: [MP1, MP2, MP3, MP4, MP5, UNKNOWN]}
+  - {key: post_neoadj_rcb_grade, label: '术后新辅助评估:RCB分级', group: treatment_response, type: enum, values: [RCB-0, RCB-I, RCB-II, RCB-III, UNKNOWN]}
+
+  # 术后及姑息治疗
+  - {key: postoperative_radiotherapy, label: 术后是否放疗, group: adjuvant_treatment, type: yes_no_unknown}
+  - {key: postoperative_chemotherapy, label: 术后是否化疗, group: adjuvant_treatment, type: yes_no_unknown}
+  - {key: postoperative_chemotherapy_regimen, label: 术后化疗方案, group: adjuvant_treatment, type: regimen}
+  - {key: postoperative_chemotherapy_cycles, label: 术后化疗周期, group: adjuvant_treatment, type: integer}
+  - {key: postoperative_endocrine, label: 术后是否内分泌治疗, group: adjuvant_treatment, type: yes_no_unknown}
+  - {key: postoperative_endocrine_regimen, label: 术后内分泌治疗方案, group: adjuvant_treatment, type: regimen}
+  - {key: postoperative_immunotherapy, label: 术后是否免疫治疗, group: adjuvant_treatment, type: yes_no_unknown}
+  - {key: postoperative_immunotherapy_regimen, label: 术后免疫治疗方案, group: adjuvant_treatment, type: regimen}
+  - {key: postoperative_immunotherapy_cycles, label: 术后免疫治疗周期, group: adjuvant_treatment, type: integer}
+  - {key: postoperative_targeted, label: 术后是否靶向治疗, group: adjuvant_treatment, type: yes_no_unknown}
+  - {key: postoperative_targeted_regimen, label: 术后靶向治疗方案, group: adjuvant_treatment, type: regimen}
+  - {key: postoperative_targeted_cycles, label: 术后靶向治疗周期, group: adjuvant_treatment, type: integer}
+  - {key: palliative_systemic_treatment, label: 是否姑息全身治疗, group: palliative_treatment, type: yes_no_unknown}
+  - {key: palliative_systemic_regimen, label: 姑息全身治疗方案, group: palliative_treatment, type: regimen}
+
+  # 随访与结局
+  - {key: last_visit_date, label: 末次就诊日期, group: followup, type: date_or_partial_date}
+  - {key: recurrence, label: 是否复发, group: outcomes, type: yes_no_unknown}
+  - {key: recurrence_detail, label: '是否复发:补充填空', group: outcomes, type: string}
+  - {key: followup_metastasis, label: 是否转移, group: outcomes, type: yes_no_unknown}
+  - {key: followup_metastasis_detail, label: '是否转移:补充填空', group: outcomes, type: string}
+  - {key: second_primary_cancer, label: 是否有第二原发癌, group: outcomes, type: yes_no_unknown}
+  - {key: second_primary_cancer_detail, label: '是否有第二原发癌:补充填空', group: outcomes, type: string}
+  - {key: second_primary_pathology, label: 第二原发癌部位病理结果, group: outcomes, type: string}
+  - {key: death, label: 是否死亡, group: outcomes, type: yes_no_unknown}
+  - {key: death_date, label: 死亡日期, group: outcomes, type: date_or_partial_date, sensitivity: quasi_identifier}
+  - {key: other_collected_information, label: 其他收集信息, group: other, type: string}

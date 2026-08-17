@@ -1,0 +1,49 @@
+version: 0.2.0
+name: breast_tnm_recorded_then_inferred
+status: policy_only_ruleset_pending
+
+priority:
+  - If an explicit TNM component or stage group is recorded, preserve it as RECORDED.
+  - If multiple recorded values conflict, preserve every observation and set REVIEW_REQUIRED.
+  - Only missing components may be inferred; an inferred value never overwrites a recorded value.
+
+contexts:
+  clinical:
+    prefixes: [c]
+    evidence_window: pretreatment
+  pathological:
+    prefixes: [p]
+    allowed_when: definitive_surgery_without_neoadjuvant_treatment
+  post_neoadjuvant_clinical:
+    prefixes: [yc]
+    evidence_window: after_neoadjuvant_before_surgery
+  post_neoadjuvant_pathological:
+    prefixes: [yp]
+    allowed_when: surgery_after_neoadjuvant_treatment
+
+inference:
+  actor: llm_proposal_plus_deterministic_validation
+  output_status: REVIEW_REQUIRED
+  confidence_maximum: MEDIUM
+  require:
+    - staging_system_and_edition
+    - diagnosis_date_or_documented_applicable_period
+    - component_level_evidence
+    - verbatim_source_text
+  prohibit:
+    - inventing_missing_measurements
+    - converting_uncertain_nodes_to_positive
+    - treating_no_documented_metastasis_as_pathological_M0
+    - mixing_clinical_and_pathological_evidence_without_context
+    - mixing_p_and_yp_prefixes
+    - silently_resolving_conflicting_recorded_stages
+
+stage_group:
+  infer_only_if_all_required_factors_for_selected_stage_group_type_are_available: true
+  otherwise: null
+  distinguish: [ANATOMIC, PROGNOSTIC, NOT_SPECIFIED]
+
+review:
+  always_required_for_inferred_tnm: true
+  verified_only_by_human: true
+

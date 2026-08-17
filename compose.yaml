@@ -19,6 +19,7 @@ services:
       - ./database:/runtime/database
       - ./workspace:/runtime/workspace
       - ./knowledge:/app/knowledge:ro
+      - ./local_knowledge:/app/local_knowledge:ro
       - ./models/llm:/models/llm:ro
     depends_on:
       ollama:
@@ -42,4 +43,3 @@ volumes:
 networks:
   internal:
     driver: bridge
-

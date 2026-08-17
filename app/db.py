@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS observations (
     raw_text TEXT,
     confidence TEXT NOT NULL DEFAULT 'LOW',
     status TEXT NOT NULL DEFAULT 'AI_PROCESSED',
+    source_mode TEXT NOT NULL DEFAULT 'RECORDED',
+    derivation_json TEXT,
+    ruleset_version TEXT,
     model_name TEXT,
     model_digest TEXT,
     prompt_version TEXT,
@@ -114,6 +117,15 @@ def init_db(path: Path | None = None) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as connection:
         connection.executescript(SCHEMA)
+        existing = {row[1] for row in connection.execute("PRAGMA table_info(observations)")}
+        migrations = {
+            "source_mode": "ALTER TABLE observations ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'RECORDED'",
+            "derivation_json": "ALTER TABLE observations ADD COLUMN derivation_json TEXT",
+            "ruleset_version": "ALTER TABLE observations ADD COLUMN ruleset_version TEXT",
+        }
+        for column, statement in migrations.items():
+            if column not in existing:
+                connection.execute(statement)
 
 
 @contextmanager
@@ -131,4 +143,3 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
 
 def rows_as_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
-

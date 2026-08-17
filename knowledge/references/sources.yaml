@@ -1,0 +1,223 @@
+version: 0.1.0
+last_verified: 2026-08-17
+policy:
+  - Public URLs and bibliographic metadata may be committed.
+  - Licensed full text or terminology distributions belong in local_knowledge/ and must not be committed.
+  - Dynamic terminologies require release version, retrieval date, and file digest at import.
+
+sources:
+  - id: nhc_breast_2022
+    domain: 中国临床基线
+    title: 乳腺癌诊疗指南（2022年版）
+    organization: 中华人民共和国国家卫生健康委员会
+    year: 2022
+    url: https://www.nhc.gov.cn/yzygj/c100068/202204/0c1f7d3aca0545abbeb02030ce255930.shtml
+    use: 中国诊疗流程、AJCC第8版pTNM、病理报告、FISH、分子分型、绝经定义和常用方案
+    access: public
+
+  - id: caca_cbcs_2024
+    domain: 中国临床基线
+    title: 中国抗癌协会乳腺癌诊治指南与规范（2024年版）
+    organization: 中国抗癌协会乳腺癌专业委员会、中华医学会肿瘤学分会乳腺肿瘤学组
+    citation: 中国癌症杂志. 2023;33(12):1092-1187.
+    year: 2024
+    url: https://www.china-oncology.com/fileup/1007-3639/PDF/1703749976314-541179100.pdf
+    use: 中国人群诊断、病理、手术、系统治疗和随访术语补充
+    access: public_article
+
+  - id: ajcc_current_system
+    domain: TNM分期
+    title: AJCC Current Staging System - 8th Edition or Version 9
+    organization: American Joint Committee on Cancer / American College of Surgeons
+    url: https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/version-9/
+    use: 判断疾病部位当前适用AJCC版本；乳腺尚未被Version 9替换时继续使用第8版
+    access: public_status_page
+
+  - id: ajcc_products
+    domain: TNM分期
+    title: AJCC Cancer Staging System Products
+    organization: American Joint Committee on Cancer / American College of Surgeons
+    url: https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/cancer-staging-systems/cancer-staging-system-products/
+    use: 获取获授权的乳腺T/N/M和分期组规则、勘误或API/DLL
+    access: licensed_content
+
+  - id: who_breast_6
+    domain: 病理分类
+    title: WHO Classification of Tumours - Breast Tumours, 6th edition
+    organization: WHO International Agency for Research on Cancer
+    year: 2026
+    url: https://tumourclassification.iarc.who.int/index.html
+    citation: Quinn C, Tan PH, Allison KH, et al. Histopathology. 2026. doi:10.1111/his.70149.
+    use: 乳腺肿瘤组织学类型规范名称与分类层级
+    access: subscription_full_text
+
+  - id: cap_breast_protocols_2026
+    domain: 病理报告
+    title: CAP Current Cancer Protocols - Breast
+    organization: College of American Pathologists
+    version: June 2026 current release
+    url: https://www.cap.org/protocols-and-guidelines/cancer-protocols/current-cancer-protocols/
+    use: 穿刺、切除、肿瘤大小、分级、淋巴结、治疗反应、pTNM和标志物报告字段
+    access: public_protocols_with_terms
+
+  - id: asco_cap_er_pr_2020
+    domain: 生物标志物
+    title: Estrogen and Progesterone Receptor Testing in Breast Cancer - ASCO/CAP Guideline Update
+    citation: Allison KH, Hammond MEH, Dowsett M, et al. J Clin Oncol. 2020;38(12):1346-1366. doi:10.1200/JCO.19.02309. PMID:31928404.
+    year: 2020
+    url: https://www.cap.org/protocols-and-guidelines/cap-guidelines/current-cap-guidelines/guideline-recommendations-for-immunohistochemical-testing-of-estrogen-and-progesterone-receptors-in-breast-cancer
+    use: ER/PR阳性、低阳性、阴性、内对照和报告解释
+    access: public_guideline_summary
+
+  - id: asco_cap_her2_2023
+    domain: 生物标志物
+    title: Human Epidermal Growth Factor Receptor 2 Testing in Breast Cancer - ASCO/CAP Guideline Update
+    citation: Wolff AC, Somerfield MR, Dowsett M, et al. J Clin Oncol. 2023;41(22):3867-3872. doi:10.1200/JCO.22.02864. PMID:37284804.
+    year: 2023
+    url: https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/
+    use: HER2 IHC、ISH/FISH组合、0与1+区分及报告口径
+    access: public_guideline_summary
+
+  - id: ikwg_ki67_2021
+    domain: 生物标志物
+    title: Assessment of Ki67 in Breast Cancer - International Ki67 Working Group
+    citation: Nielsen TO, Leung SCY, Rimm DL, et al. J Natl Cancer Inst. 2021;113(7):808-819. doi:10.1093/jnci/djaa201. PMID:33369635.
+    year: 2021
+    url: https://pubmed.ncbi.nlm.nih.gov/33369635/
+    use: Ki-67分析有效性、评分和阈值使用边界
+    access: bibliographic_and_abstract
+
+  - id: st_gallen_2013
+    domain: 分子分型
+    title: St Gallen 2013 clinico-pathological surrogate definitions
+    citation: Goldhirsch A, Winer EP, Coates AS, et al. Ann Oncol. 2013;24(9):2206-2223. doi:10.1093/annonc/mdt303.
+    year: 2013
+    url: https://pmc.ncbi.nlm.nih.gov/articles/PMC3755334/
+    use: Luminal A-like、Luminal B-like、HER2阳性和三阴性替代分型的候选规则
+    access: open_access_article
+
+  - id: fda_pcr_2020
+    domain: 新辅助疗效
+    title: Pathological Complete Response in Neoadjuvant Treatment of High-Risk Early-Stage Breast Cancer
+    organization: U.S. Food and Drug Administration
+    year: 2020
+    url: https://www.fda.gov/regulatory-information/search-fda-guidance-documents/pathological-complete-response-neoadjuvant-treatment-high-risk-early-stage-breast-cancer-use
+    use: pCR可接受定义与记录边界
+    access: public_guidance
+
+  - id: miller_payne_2003
+    domain: 新辅助疗效
+    title: A new histological grading system to assess response of breast cancers to primary chemotherapy
+    citation: Ogston KN, Miller ID, Payne S, et al. Breast. 2003;12(5):320-327. doi:10.1016/S0960-9776(03)00106-1. PMID:14659147.
+    year: 2003
+    url: https://pubmed.ncbi.nlm.nih.gov/14659147/
+    use: Miller-Payne五级病理反应分级
+    access: bibliographic_and_abstract
+
+  - id: rcb_symmans_2007
+    domain: 新辅助疗效
+    title: Measurement of Residual Breast Cancer Burden to Predict Survival After Neoadjuvant Chemotherapy
+    citation: Symmans WF, Peintinger F, Hatzis C, et al. J Clin Oncol. 2007;25(28):4414-4422. doi:10.1200/JCO.2007.10.6823.
+    year: 2007
+    url: https://ascopubs.org/doi/10.1200/JCO.2007.10.6823
+    use: RCB指数的原始方法与预后验证
+    access: publisher_article
+
+  - id: rcb_calculator
+    domain: 新辅助疗效
+    title: Residual Cancer Burden Calculator and Pathologic Evaluation Resources
+    organization: The University of Texas MD Anderson Cancer Center
+    url: https://www.mdanderson.org/for-physicians/clinical-tools-resources/clinical-calculators/residual-cancer-burden.html
+    use: RCB所需原始变量、计算器和病理评估说明
+    access: public_calculator
+
+  - id: recist_1_1
+    domain: 影像疗效
+    title: New response evaluation criteria in solid tumours - Revised RECIST guideline version 1.1
+    citation: Eisenhauer EA, Therasse P, Bogaerts J, et al. Eur J Cancer. 2009;45(2):228-247. doi:10.1016/j.ejca.2008.10.026.
+    year: 2009
+    url: https://recist.eortc.org/wp-content/uploads/sites/4/2015/03/RECISTGuidelines.pdf
+    use: 影像靶病灶测量和CR/PR/SD/PD定义；仅在项目明确采用RECIST时启用
+    access: public_guideline_pdf
+
+  - id: acr_birads_5
+    domain: 乳腺影像
+    title: ACR Breast Imaging Reporting and Data System - BI-RADS Atlas, 5th Edition
+    organization: American College of Radiology
+    version: 5th Edition; next edition announced but not released at verification date
+    url: https://www.acr.org/Clinical-Resources/Reporting-and-Data-Systems/Bi-Rads
+    use: 钼靶、超声、MRI标准术语和BI-RADS分级
+    access: licensed_atlas_with_public_summary
+
+  - id: mcode_4
+    domain: 肿瘤数据模型
+    title: minimal Common Oncology Data Elements Implementation Guide
+    organization: HL7 International / CodeX
+    version: 4.0.0 STU4
+    year: 2025
+    url: https://hl7.org/fhir/us/mcode/
+    use: 患者、疾病特征、TNM、治疗和结局的数据组织与互操作映射
+    access: open_specification
+
+  - id: ncit
+    domain: 标准术语
+    title: NCI Thesaurus
+    organization: U.S. National Cancer Institute Enterprise Vocabulary Services
+    url: https://www.cancer.gov/about-nci/organization/cbiit/vocabulary
+    download: https://evs.nci.nih.gov/ftp1/NCI_Thesaurus
+    use: 肿瘤、解剖、病理、基因、生物标志物和药物标准概念
+    access: public_dynamic_terminology
+
+  - id: icdo_3_2
+    domain: 标准术语
+    title: International Classification of Diseases for Oncology, Third Edition, Second Revision
+    organization: World Health Organization
+    version: ICD-O-3.2
+    year: 2019
+    url: https://www.who.int/standards/classifications/other-classifications/international-classification-of-diseases-for-oncology
+    use: 肿瘤部位、形态学、行为和分级编码
+    access: public_download_with_terms
+
+  - id: loinc_2_82
+    domain: 标准术语
+    title: Logical Observation Identifiers Names and Codes
+    organization: Regenstrief Institute
+    version: 2.82
+    year: 2026
+    url: https://loinc.org/downloads/
+    license: https://loinc.org/license/
+    use: 检验和部分肿瘤标志物观察项目编码
+    access: free_with_license_and_attribution
+
+  - id: rxnorm
+    domain: 药物术语
+    title: RxNorm
+    organization: U.S. National Library of Medicine
+    url: https://www.nlm.nih.gov/research/umls/rxnorm/overview.html
+    use: 通用名、商品名、成分、剂量和剂型归一化；覆盖以美国上市药物为主
+    access: public_api_download_terms_apply
+
+  - id: atc_ddd
+    domain: 药物术语
+    title: Anatomical Therapeutic Chemical Classification with Defined Daily Doses
+    organization: World Health Organization
+    url: https://www.who.int/teams/health-product-and-policy-standards/inn/atc-ddd
+    use: 药物利用研究和治疗药物分类；不代替具体乳腺癌方案词典
+    access: dynamic_classification_terms_apply
+
+  - id: nci_drug_dictionary
+    domain: 药物术语
+    title: NCI Drug Dictionary
+    organization: U.S. National Cancer Institute
+    url: https://www.cancer.gov/publications/dictionaries/cancer-drug
+    use: 抗肿瘤药物、别名、机制和NCIt链接补充
+    access: public_web_dictionary
+
+  - id: snomed_ct
+    domain: 临床术语
+    title: SNOMED CT
+    organization: SNOMED International
+    url: https://docs.snomed.org/snomed-ct-user-guides/mlds-user-guide/member-affiliate-licensing-information
+    use: 疾病、临床发现、手术和治疗概念映射；部署前必须核对所在地区许可
+    access: licensed_by_territory
+

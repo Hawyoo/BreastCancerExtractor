@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 PatientStatus = Literal["UNPROCESSED", "AI_PROCESSED", "REVIEW_REQUIRED", "VERIFIED"]
 Confidence = Literal["LOW", "MEDIUM", "HIGH", "VERIFIED"]
@@ -39,12 +39,24 @@ class ObservationCreate(BaseModel):
     value: str | None = None
     raw_text: str | None = None
     confidence: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
+    source_mode: Literal["RECORDED", "INFERRED"] = "RECORDED"
+    inference_basis: list[dict[str, str | None]] = Field(default_factory=list)
+    ruleset_version: str | None = None
     document_id: str | None = None
     region_id: str | None = None
     model_name: str | None = None
     model_digest: str | None = None
     prompt_version: str | None = None
     ocr_version: str | None = None
+
+    @model_validator(mode="after")
+    def validate_inference_provenance(self) -> "ObservationCreate":
+        if self.source_mode == "INFERRED":
+            if not self.inference_basis or not self.ruleset_version:
+                raise ValueError("Inferred values require inference_basis and ruleset_version")
+            if self.confidence == "HIGH":
+                raise ValueError("Inferred values cannot be HIGH before human verification")
+        return self
 
 
 class ObservationEdit(BaseModel):
@@ -66,4 +78,3 @@ class DocumentTypeUpdate(BaseModel):
 class ModelImportRequest(BaseModel):
     filename: str
     model_name: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
-

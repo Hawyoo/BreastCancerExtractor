@@ -19,16 +19,10 @@
     "her2_ihc": {"enum": ["0", "1+", "2+", "3+", "indeterminate", null]},
     "her2_ish": {"enum": ["amplified", "not_amplified", "indeterminate", null]},
     "ki67_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
-    "explicit_tnm": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "cT": {"type": ["string", "null"]}, "cN": {"type": ["string", "null"]},
-        "cM": {"type": ["string", "null"]}, "pT": {"type": ["string", "null"]},
-        "pN": {"type": ["string", "null"]}, "pM": {"type": ["string", "null"]},
-        "ypT": {"type": ["string", "null"]}, "ypN": {"type": ["string", "null"]},
-        "ypM": {"type": ["string", "null"]}
-      }
+    "staging_assessments": {
+      "type": "array",
+      "description": "Each item must conform to staging.json; recorded values take priority over inferred values.",
+      "items": {"$ref": "staging.json"}
     },
     "evidence": {
       "type": "array",
@@ -43,4 +37,3 @@
     }
   }
 }
-

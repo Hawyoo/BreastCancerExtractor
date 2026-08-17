@@ -71,3 +71,31 @@ def test_only_human_can_verify_observation(client):
     detail = client.get(f"/api/patients/{patient['id']}").json()
     assert [item["operation"] for item in detail["audit_log"]] == ["USER_VERIFY", "AI_EXTRACT"]
 
+
+def test_inferred_tnm_requires_provenance_and_review(client):
+    patient = create_patient(client)
+    rejected = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "clinical_stage", "value": "cT2N1M0", "confidence": "MEDIUM",
+              "source_mode": "INFERRED"},
+    )
+    assert rejected.status_code == 422
+
+    accepted = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "field_name": "clinical_stage",
+            "value": "cT2N1M0",
+            "confidence": "MEDIUM",
+            "source_mode": "INFERRED",
+            "ruleset_version": "AJCC-breast-8-local-v1",
+            "inference_basis": [
+                {"component": "T", "fact": "最大径25 mm", "source_text": "肿块约25 mm"}
+            ],
+        },
+    )
+    assert accepted.status_code == 201
+    assert accepted.json()["status"] == "REVIEW_REQUIRED"
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    assert detail["observations"][0]["source_mode"] == "INFERRED"
+    assert detail["audit_log"][0]["operation"] == "AI_INFER"
