@@ -160,6 +160,74 @@ async function loadPatients() {
   updatePatientSidebar();
 }
 
+function packageCounts(item){
+  const counts=item.counts||{};
+  return `${counts.documents||0} 张图片 · ${counts.observations||0} 条字段`;
+}
+
+async function importPatientPackage(packageName,action){
+  const labels={IMPORT_NEW:"导入",KEEP_LOCAL:"保留本机",USE_EXTERNAL:"使用外部",MERGE:"合并"};
+  if(["USE_EXTERNAL","MERGE"].includes(action)&&!confirm(`确定对该患者执行“${labels[action]}”吗？\n所有操作会写入审计记录。`))return;
+  const result=await api("/api/data-migration/import",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({package_name:packageName,action}),
+  });
+  const suffix=result.conflicts?.length?`，${result.conflicts.length} 项冲突已进入人工审核`:"";
+  toast(`患者 ${result.patient_code} 已${labels[action]}${suffix}`);
+  await Promise.all([loadPatients(),loadPatientPackages()]);
+}
+
+function packageActionButton(label,item,action,className="tool"){
+  const button=document.createElement("button");button.type="button";button.className=className;button.textContent=label;
+  button.onclick=()=>importPatientPackage(item.package_name,action).catch(error=>toast(error.message));
+  return button;
+}
+
+function renderPatientPackages(scan){
+  const container=$("#patient-package-results");container.innerHTML="";
+  const sections=[
+    ["待导入",scan.new||[],item=>[packageActionButton("导入患者",item,"IMPORT_NEW","primary")]],
+    ["重复患者 / 需要选择",scan.conflicts||[],item=>[
+      packageActionButton("保留本机",item,"KEEP_LOCAL"),
+      packageActionButton("使用外部",item,"USE_EXTERNAL","danger-tool"),
+      packageActionButton("合并并审核冲突",item,"MERGE","primary"),
+    ]],
+    ["已登记",scan.current||[],()=>[]],
+    ["无效目录",scan.invalid||[],()=>[]],
+  ];
+  let total=0;
+  for(const [title,items,actions] of sections){
+    if(!items.length)continue;total+=items.length;
+    const heading=document.createElement("h5");heading.textContent=`${title}（${items.length}）`;container.appendChild(heading);
+    for(const item of items){
+      const card=document.createElement("div");card.className="patient-package-card";
+      const info=document.createElement("div");
+      const code=item.patient_code||item.package_name;
+      info.innerHTML=`<strong>${escapeHtml(code)}</strong><small>${escapeHtml(item.error||packageCounts(item))}</small>`;
+      if(item.verified_conflicts?.length){
+        const warning=document.createElement("small");warning.className="package-conflict-note";
+        warning.textContent=`${item.verified_conflicts.length} 项人工确认值冲突`;
+        info.appendChild(warning);
+      }
+      const actionBox=document.createElement("div");actionBox.className="patient-package-actions";
+      actions(item).forEach(button=>actionBox.appendChild(button));card.append(info,actionBox);container.appendChild(card);
+    }
+  }
+  if(!total)container.innerHTML='<div class="muted-empty">未发现可登记或冲突的患者目录</div>';
+}
+
+async function loadPatientPackages(){
+  const button=$("#scan-patient-packages");button.disabled=true;button.textContent="正在扫描…";
+  try{renderPatientPackages(await api("/api/data-migration/scan"));}
+  finally{button.disabled=false;button.textContent="扫描患者目录";}
+}
+
+$("#scan-patient-packages").onclick=async()=>{
+  $("#patient-package-panel").hidden=false;
+  try{await loadPatientPackages();}catch(error){toast(error.message);}
+};
+$("#close-patient-packages").onclick=()=>{$("#patient-package-panel").hidden=true;};
+
 function renderDataPreview() {
   const dataset=state.dataPreview,table=$("#data-preview-table"),head=table.querySelector("thead"),body=table.querySelector("tbody");
   head.innerHTML="";body.innerHTML="";

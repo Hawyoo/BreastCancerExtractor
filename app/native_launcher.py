@@ -32,8 +32,9 @@ def configure_native_environment(root: Path | None = None) -> Path:
     root = (root or _portable_root()).resolve()
     os.environ["BCE_PORTABLE_ROOT"] = str(root)
     os.environ["RUNTIME_MODE"] = "windows_native"
-    os.environ["DATABASE_PATH"] = str(root / "database" / "extractor.db")
-    os.environ["WORKSPACE_PATH"] = str(root / "workspace")
+    os.environ["DATABASE_PATH"] = str(root / "database" / "catalog.sqlite")
+    os.environ["WORKSPACE_PATH"] = str(root / "database")
+    os.environ["LEGACY_WORKSPACE_PATH"] = str(root / "workspace")
     os.environ["MODEL_IMPORT_PATH"] = str(root / "models" / "llm")
     os.environ["OLLAMA_URL"] = f"http://{APP_HOST}:{OLLAMA_PORT}"
     os.environ["OCR_URL"] = f"http://{APP_HOST}:{OCR_PORT}"
@@ -42,6 +43,7 @@ def configure_native_environment(root: Path | None = None) -> Path:
     os.environ.setdefault("PADDLE_PDX_MODEL_SOURCE", "BOS")
     for directory in (
         root / "database",
+        root / "database" / "patients",
         root / "workspace",
         root / "models" / "llm",
         root / "models" / "ollama",

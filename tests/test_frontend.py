@@ -40,7 +40,9 @@ def test_sanitized_save_runs_ocr_before_ai_automatically():
     save_start = javascript.index('$("#save-sanitized").onclick')
     save_end = javascript.index("function rawStatusText", save_start)
     assert 'status:"OCR_QUEUED"' in javascript[save_start:save_end]
-    ocr_worker = javascript[javascript.index("async function runOcrQueue"):javascript.index("async function runAiQueue")]
+    ocr_worker = javascript[
+        javascript.index("async function runOcrQueue") : javascript.index("async function runAiQueue")
+    ]
     assert "/ocr" in ocr_worker
     assert 'job.status="AI_QUEUED"' in ocr_worker
 
@@ -64,7 +66,9 @@ def test_ocr_and_ai_use_independent_parallel_workers_and_refresh_patient():
     assert "async function runAiQueue" in javascript
     assert "state.ocrWorkerActive" in javascript
     assert "state.aiWorkerActive" in javascript
-    ocr_worker = javascript[javascript.index("async function runOcrQueue"):javascript.index("async function runAiQueue")]
+    ocr_worker = javascript[
+        javascript.index("async function runOcrQueue") : javascript.index("async function runAiQueue")
+    ]
     assert "/ocr" in ocr_worker
     assert "refreshCurrentPatient(job.patientId)" in ocr_worker
     assert 'job.status="AI_QUEUED"' in ocr_worker
@@ -72,7 +76,9 @@ def test_ocr_and_ai_use_independent_parallel_workers_and_refresh_patient():
 
 def test_document_buttons_use_visible_background_queue():
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
-    document_renderer = javascript[javascript.index("function renderDocuments"):javascript.index("function renderObservations")]
+    document_renderer = javascript[
+        javascript.index("function renderDocuments") : javascript.index("function renderObservations")
+    ]
     assert 'queueDocuments([doc],"OCR_ONLY")' in document_renderer
     assert 'queueDocuments([doc],"AI_ONLY")' in document_renderer
     assert "OCR任务已加入后台队列" in document_renderer
@@ -93,7 +99,6 @@ def test_batch_import_controls_are_separate_and_each_image_defaults_to_crop():
 
 def test_original_enhanced_switch_persists_between_images():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
-    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert 'id="image-enhancement-toggle"' in html
     assert "原图" in html and "增强图" in html
 
@@ -263,6 +268,19 @@ def test_homepage_has_all_patient_data_preview_and_csv_export():
     assert "function loadDataPreview()" in javascript
     assert "/api/data-preview.csv?verified_only=" in javascript
     assert "position: sticky" in styles
+
+
+def test_homepage_can_scan_and_merge_self_contained_patient_directories():
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    for element_id in ("scan-patient-packages", "patient-package-panel", "patient-package-results"):
+        assert f'id="{element_id}"' in html
+    assert "/api/data-migration/scan" in javascript
+    assert "/api/data-migration/import" in javascript
+    assert '"IMPORT_NEW"' in javascript
+    assert '"KEEP_LOCAL"' in javascript
+    assert '"USE_EXTERNAL"' in javascript
+    assert '"MERGE"' in javascript
 
 
 def test_review_actions_completion_summary_delete_and_conflict_gallery_are_present():

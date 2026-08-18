@@ -11,8 +11,9 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OCR_URL: ${OCR_URL:-http://ocr:8001}
       DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-}
-      DATABASE_PATH: /runtime/database/extractor.db
-      WORKSPACE_PATH: /runtime/workspace
+      DATABASE_PATH: /runtime/database/catalog.sqlite
+      WORKSPACE_PATH: /runtime/database
+      LEGACY_WORKSPACE_PATH: /runtime/workspace
       MODEL_IMPORT_PATH: /models/llm
       MAX_SANITIZED_IMAGE_MB: ${MAX_SANITIZED_IMAGE_MB:-25}
     ports:

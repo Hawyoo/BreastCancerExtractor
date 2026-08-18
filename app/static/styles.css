@@ -97,6 +97,18 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
 .patient-item.active { border-color: var(--green); background: var(--mint); }
 .patient-item strong, .patient-item small { display: block; }
 .patient-item small { margin-top: 3px; color: var(--muted); }
+.patient-package-panel { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.patient-package-panel[hidden] { display: none; }
+.patient-package-panel h4,.patient-package-panel h5 { margin: 0; }
+.patient-package-panel p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.patient-package-results { display: grid; gap: 8px; max-height: 440px; overflow: auto; }
+.patient-package-results h5 { margin-top: 5px; color: var(--muted); }
+.patient-package-card { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--control); }
+.patient-package-card strong,.patient-package-card small { display: block; }
+.patient-package-card small { margin-top: 3px; color: var(--muted); }
+.patient-package-card .package-conflict-note { color: #b46b1f; }
+.patient-package-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.patient-package-actions button { min-height: 32px; padding: 6px 8px; font-size: 11px; }
 .selected-patient-summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .selected-patient-summary[hidden] { display: none; }
 .selected-patient-summary strong, .selected-patient-summary small { display: block; }

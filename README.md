@@ -57,7 +57,7 @@ Portable 会自动启动随包提供的 PaddleOCR；先连接 `127.0.0.1:11434` 
   ↓ Canvas 重新编码 PNG（删除 EXIF）
 本地 FastAPI
   ↓ 再次解码/编码
-workspace/patients/<patient_code>/sanitized/<uuid>.png
+database/patients/<patient_code>/sanitized/<uuid>.png
 ```
 
 注意：浏览器崩溃转储、操作系统交换文件、屏幕录制等属于操作系统层面的风险，无法仅靠 Web 应用绝对消除。医院部署仍应配合加密磁盘、受控账户和禁用外网策略。
@@ -349,21 +349,35 @@ stop-all.bat
 docker compose up -d --build
 ```
 
-程序升级、知识库升级和模型升级是三件独立的事情。不要因为更新代码而删除 `database/`、`workspace/`、`models/` 或 Docker 的 `ollama_models` 卷。
+程序升级、知识库升级和模型升级是三件独立的事情。不要因为更新代码而删除 `database/`、`models/` 或 Docker 的 `ollama_models` 卷。
 
 ### 11. 数据备份与迁移
 
 至少备份：
 
 ```text
-database/        SQLite 数据库、人工修改和审计记录
-workspace/       已确认脱敏的图片、ROI 和运行文件
+database/        可重建目录库，以及每名患者完整的 patient.sqlite、脱敏图片和审核记录
 local_knowledge/ 本机授权资料和医院内部字典
 models/llm/      用户保留的原始 GGUF（如需）
 .env             本机配置
 ```
 
 备份前先运行 `stop.bat`，避免复制正在写入的 SQLite 文件。未经安全评估，不要把备份放到普通网盘。Ollama 已导入模型位于 Docker 卷中；如果原始 GGUF 仍在 `models/llm/`，新电脑可重新导入，否则需要另行导出/备份 Docker 卷。
+
+患者数据采用可移动目录：
+
+```text
+database/
+├─ catalog.sqlite
+├─ instance.json
+└─ patients/
+   └─ 1234567/
+      ├─ patient.sqlite
+      ├─ manifest.json
+      └─ sanitized/
+```
+
+不同电脑处理不同患者时，停止软件后复制完整病案号目录到主电脑的 `database/patients/`，再在首页点击“扫描患者目录”。如果目标电脑已经有同一病案号，复制前将外来目录改名为 `病案号-来源电脑`（不要覆盖本机同名目录）；系统读取 `manifest.json` 中的真实病案号，并提供“保留本机”“使用外部”“合并并审核冲突”。处理后的外来目录会保留并标记为已处理，不会反复出现在扫描列表，也不会静默覆盖两边的人工确认值。旧版 `extractor.db` 和 `workspace/patients/` 首次启动时会复制迁移到新结构，旧文件保留用于回滚，确认新目录可用后再人工归档。
 
 ### 12. 离线版安装说明
 
@@ -392,7 +406,7 @@ BreastCancerExtractor-Offline-<version>/
 若要卸载应用但保留数据：
 
 1. 执行 `stop.bat`；
-2. 备份 `database/`、`workspace/`、`local_knowledge/`、`.env` 和需要保留的 GGUF；
+2. 备份 `database/`、`local_knowledge/`、`.env` 和需要保留的 GGUF；
 3. 执行 `docker compose down`；
 4. 可以删除代码目录，但不要删除尚未备份的持久化数据。
 
@@ -402,7 +416,7 @@ BreastCancerExtractor-Offline-<version>/
 docker compose down -v
 ```
 
-这是破坏性操作：`-v` 会删除本项目的 Ollama 模型卷，通常无法恢复；项目目录中的 `database/` 和 `workspace/` 是 bind mount，仍需在确认备份和目标路径无误后由用户单独删除。本项目不会自动删除患者数据。
+这是破坏性操作：`-v` 会删除本项目的 Ollama 模型卷，通常无法恢复；项目目录中的 `database/` 是 bind mount，仍需在确认备份和目标路径无误后由用户单独删除。本项目不会自动删除患者数据。
 
 只有在该电脑不再运行任何其他容器应用时，才考虑通过 Windows“设置 → 应用”卸载 Docker Desktop；卸载 Docker Desktop 可能影响同机其他 Docker 项目。WSL 也可能被其他软件使用，不应为了卸载本项目而直接删除 WSL。
 

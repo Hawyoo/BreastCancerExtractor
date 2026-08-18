@@ -54,7 +54,10 @@ dist/BreastCancerExtractor/
 ├─ BreastCancerExtractor.exe
 ├─ _internal/
 ├─ database/
-├─ workspace/
+│  └─ patients/<病案号>/
+│     ├─ patient.sqlite
+│     ├─ manifest.json
+│     └─ sanitized/
 ├─ models/
 ├─ local_knowledge/
 └─ runtime/
@@ -80,5 +83,5 @@ dist/BreastCancerExtractor/
 - 发布整个 onedir，不能只发布 exe；
 - 发布前核对 Ollama 和模型的再分发许可；
 - 不将真实病历、数据库、日志、GGUF 或 Ollama 模型权重提交到 Git；
-- 升级时备份并保留 `database/`、`workspace/`、`models/` 和 `local_knowledge/`；
+- 升级时备份并保留 `database/`、`models/` 和 `local_knowledge/`；
 - Windows Native 完成后继续保留 Docker 回归测试，避免两种运行方式漂移。

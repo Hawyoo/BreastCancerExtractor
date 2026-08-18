@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import re
 import time
 import uuid
@@ -24,6 +25,7 @@ from app.models import (
     ObservationVerify,
     OllamaModelUpdate,
     OllamaProviderUpdate,
+    PatientPackageImport,
     PatientCreate,
     RegionInput,
     SanitizationMetadata,
@@ -373,13 +375,25 @@ from app.storage import (
     save_sanitized_image,
     scan_gguf_files,
 )
+from app.patient_store import (
+    delete_patient_package,
+    import_patient_package,
+    migrate_legacy_catalog,
+    migrate_legacy_workspace,
+    scan_patient_packages,
+    sync_dirty_patient_packages,
+    sync_missing_patient_packages,
+)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    migrate_legacy_catalog()
     init_db()
+    migrate_legacy_workspace()
     settings.workspace_path.mkdir(parents=True, exist_ok=True)
     settings.model_import_path.mkdir(parents=True, exist_ok=True)
+    sync_missing_patient_packages()
     yield
 
 
@@ -388,6 +402,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 _EXTRACTION_PROGRESS: dict[str, dict[str, object]] = {}
 _OCR_IN_PROGRESS: set[str] = set()
 STAGING_FIELDS = {"clinical_stage", "pathological_stage"}
+LOGGER = logging.getLogger(__name__)
 
 
 def update_extraction_progress(document_id: str, **values: object) -> None:
@@ -400,6 +415,13 @@ def update_extraction_progress(document_id: str, **values: object) -> None:
 @app.middleware("http")
 async def privacy_headers(request, call_next):
     response = await call_next(request)
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400:
+        try:
+            synced = sync_dirty_patient_packages()
+            response.headers["X-Patient-Packages-Synced"] = str(len(synced))
+        except Exception:
+            LOGGER.exception("Patient package synchronization is pending")
+            response.headers["X-Patient-Packages-Synced"] = "pending"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; img-src 'self' blob: data:; style-src 'self'; "
         "script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"
@@ -446,6 +468,19 @@ def get_patients() -> list[dict[str, object]]:
 @app.get("/api/data-preview")
 def data_preview(verified_only: bool = False) -> dict[str, object]:
     return build_data_preview(verified_only=verified_only)
+
+
+@app.get("/api/data-migration/scan")
+def scan_data_migration() -> dict[str, list[dict[str, object]]]:
+    return scan_patient_packages()
+
+
+@app.post("/api/data-migration/import")
+def import_data_migration(payload: PatientPackageImport) -> dict[str, object]:
+    try:
+        return import_patient_package(payload.package_name, payload.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/data-preview.csv")
@@ -507,6 +542,7 @@ def delete_patient(patient_id: int) -> None:
         ]
     # Remove managed files first; if this fails, the database is left intact.
     delete_patient_workspace(patient_code)
+    delete_patient_package(patient_code)
     with connect() as db:
         db.execute("DELETE FROM model_runs WHERE patient_id=?", (patient_id,))
         db.execute("DELETE FROM patients WHERE id=?", (patient_id,))
