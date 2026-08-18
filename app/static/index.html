@@ -12,42 +12,88 @@
       <span class="eyebrow">LOCAL RESEARCH TOOL</span>
       <h1>Breast Cancer Extractor</h1>
     </div>
-    <div id="privacy-status" class="privacy-pill">正在检查本地模式…</div>
+    <div class="topbar-actions">
+      <div class="theme-controls">
+        <button id="theme-toggle" class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="切换夜间模式">
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span>夜间模式</span>
+        </button>
+        <button id="theme-system" type="button">跟随系统</button>
+      </div>
+      <div id="service-status" class="privacy-pill">正在检查本地服务…</div>
+    </div>
   </header>
 
   <main>
     <section class="intro">
       <div>
         <h2>可追溯的乳腺癌病历结构化工作台</h2>
-        <p>原图仅在当前浏览器内存中打开。完成裁剪与实心遮盖后，系统只保存重新编码的脱敏 PNG。</p>
-      </div>
-      <div class="privacy-card">
-        <strong>隐私边界</strong>
-        <span>原图不上传</span>
-        <span>原图不写入磁盘</span>
-        <span>EXIF 不保留</span>
+        <p>患者资料导入、OCR、AI 抽取、人工确认与修改留痕均在本地完成。</p>
       </div>
     </section>
 
-    <section class="layout">
+    <section id="main-layout" class="layout patient-selection-mode">
       <aside class="panel patients-panel">
-        <div class="panel-title">
-          <h3>患者</h3>
-          <button id="refresh-patients" class="icon-button" title="刷新">↻</button>
+        <div id="patient-browser">
+          <div class="panel-title">
+            <h3>患者</h3>
+            <div class="patient-browser-actions">
+              <button id="open-data-preview" class="tool" type="button">数据预览</button>
+              <button id="refresh-patients" class="icon-button" title="刷新">↻</button>
+            </div>
+          </div>
+          <form id="patient-form" class="patient-form">
+            <input id="patient-code" placeholder="7位病案号" inputmode="numeric" pattern="\d{7}" maxlength="7" required>
+            <button type="submit">新建</button>
+          </form>
+          <div id="patient-list" class="patient-list"></div>
         </div>
-        <form id="patient-form" class="patient-form">
-          <input id="patient-code" placeholder="例如 P0001" pattern="[A-Za-z0-9._-]+" required>
-          <button type="submit">新建</button>
-        </form>
-        <div id="patient-list" class="patient-list"></div>
+
+        <div id="selected-patient-summary" class="selected-patient-summary" hidden>
+          <div>
+            <span class="eyebrow">当前患者</span>
+            <strong id="sidebar-patient-code"></strong>
+            <small id="sidebar-patient-meta"></small>
+          </div>
+          <div class="selected-patient-actions">
+            <button id="delete-patient" class="danger-tool" type="button">删除患者</button>
+            <button id="exit-patient" class="tool" type="button">退出</button>
+          </div>
+        </div>
+
+        <section id="field-review-panel" class="field-review-panel" hidden>
+          <div class="field-review-heading">
+            <span class="eyebrow">字段审核</span>
+            <strong id="review-field-name"></strong>
+            <small id="review-field-key" class="field-key-note"></small>
+          </div>
+          <div class="field-review-navigation">
+            <button id="previous-field" class="tool" type="button">← 上一条</button>
+            <span id="review-position"></span>
+            <button id="next-field" class="tool" type="button">下一条 →</button>
+          </div>
+          <div class="field-review-actions">
+            <button id="save-field-edit" class="tool" type="button">保存修改</button>
+            <button id="verify-field" class="primary" type="button">人工确认</button>
+          </div>
+          <label>AI原值<textarea id="review-ai-value" rows="2" readonly></textarea></label>
+          <div id="review-inference-basis" class="review-inference-basis" hidden></div>
+          <label id="review-current-value-label">当前值<textarea id="review-current-value" rows="3"></textarea></label>
+          <div id="review-choice-options" class="review-choice-options" hidden></div>
+          <div id="review-field-meta" class="review-field-meta"></div>
+          <label>修改备注<textarea id="review-note" rows="2" placeholder="例如：对照原图修正"></textarea></label>
+        </section>
+        <section id="review-complete-panel" class="review-complete-panel" hidden>
+          <div class="complete-check">✓</div>
+          <strong>该患者全部字段已处理完毕</strong>
+          <span>所有当前适用问题均已人工确认。</span>
+          <button id="review-patient-summary" class="tool" type="button">回顾该病人</button>
+          <button id="quick-add-patient" class="primary" type="button">快速添加新病人</button>
+        </section>
       </aside>
 
       <section class="panel workspace-panel">
-        <div id="empty-state" class="empty-state">
-          <div class="empty-icon">＋</div>
-          <h3>请先新建或选择患者</h3>
-          <p>患者编号应为科研编号，不要使用姓名或住院号。</p>
-        </div>
+        <div id="empty-state" class="empty-state" aria-hidden="true"></div>
 
         <div id="patient-workspace" hidden>
           <div class="patient-header">
@@ -58,34 +104,44 @@
             <span id="current-patient-status" class="status-badge"></span>
           </div>
 
-          <nav class="steps" aria-label="图片导入步骤">
-            <span class="active">1 选择原图</span>
-            <span>2 裁剪与脱敏</span>
-            <span>3 框选信息</span>
-            <span>4 保存脱敏图</span>
-          </nav>
+          <div class="batch-import-bar">
+            <label class="file-button">
+              批量选择图片
+              <input id="raw-file" type="file" accept="image/*" multiple hidden>
+            </label>
+            <label class="file-button secondary-file-button">
+              选择患者文件夹
+              <input id="raw-folder" type="file" accept="image/*" webkitdirectory multiple hidden>
+            </label>
+          </div>
 
           <div class="editor-toolbar">
-            <label class="file-button">
-              选择本地图片
-              <input id="raw-file" type="file" accept="image/*" hidden>
-            </label>
             <button data-mode="crop" class="tool active" disabled>裁剪</button>
             <button data-mode="redact" class="tool" disabled>实心遮盖</button>
             <button data-mode="roi" class="tool" disabled>信息框 ROI</button>
             <button id="undo" class="tool" disabled>撤销</button>
             <button id="reset-editor" class="tool" disabled>重置</button>
+            <div class="preview-zoom-controls" aria-label="图片缩放">
+              <button id="zoom-out" class="tool preview-tool" type="button" disabled aria-label="缩小图片">−</button>
+              <span id="zoom-level">适应窗口</span>
+              <button id="zoom-in" class="tool preview-tool" type="button" disabled aria-label="放大图片">＋</button>
+              <button id="zoom-fit" class="tool preview-tool" type="button" disabled>适应窗口</button>
+            </div>
+            <button id="image-enhancement-toggle" class="image-enhancement-switch" type="button" role="switch" aria-checked="false" title="浏览器内基础去屏纹与对比度增强">
+              <span>原图</span>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span>增强图</span>
+            </button>
           </div>
 
           <div id="editor-help" class="editor-help">选择图片后，先拖动框选保留区域。</div>
 
-          <div class="canvas-shell">
-            <canvas id="image-canvas"></canvas>
-            <div id="canvas-placeholder">原图只会在此处本地显示</div>
-          </div>
+          <section id="conflict-evidence-gallery" class="conflict-evidence-gallery" hidden>
+            <div class="panel-title"><h3>冲突来源图片</h3><span>点击图片可在下方主预览中查看</span></div>
+            <div id="conflict-evidence-images" class="conflict-evidence-images"></div>
+          </section>
 
           <div class="import-options">
-            <label>显示名称<input id="display-name" placeholder="例如 术后病理-第1页"></label>
             <label>文档类型
               <select id="document-type">
                 <option value="OTHER">其他</option>
@@ -103,22 +159,40 @@
               </select>
             </label>
             <label>当前 ROI 类型
-              <select id="roi-type">
-                <option value="PATHOLOGY">病理诊断</option>
-                <option value="IHC">IHC</option>
-                <option value="TUMOR_SIZE">肿瘤大小</option>
-                <option value="LYMPH_NODE">淋巴结</option>
-                <option value="STAGING">分期</option>
-                <option value="TREATMENT">治疗</option>
-                <option value="OTHER">其他</option>
-              </select>
+              <select id="roi-type"></select>
             </label>
+            <label>显示名称（自动生成，可修改）<input id="display-name"></label>
             <button id="save-sanitized" class="primary" disabled>确认脱敏并保存</button>
           </div>
 
+          <div class="canvas-shell">
+            <canvas id="image-canvas"></canvas>
+            <div id="canvas-placeholder" aria-hidden="true"></div>
+          </div>
+
+          <section class="batch-workbench" aria-label="批量图片与后台处理队列">
+            <div>
+              <div class="panel-title"><h3>待处理原图</h3><span id="raw-queue-count">0 张</span></div>
+              <p class="queue-help">原图仅保留在当前浏览器会话中；确认保存后立即释放该张原图，并自动打开下一张。</p>
+              <div id="raw-queue" class="queue-list"><div class="muted-empty">尚未选择图片</div></div>
+            </div>
+            <div>
+              <div class="panel-title"><h3>后台 OCR / AI</h3><span id="processing-count">0 项</span></div>
+              <p class="queue-help">保存脱敏图后自动在这里排队，不影响上方继续裁剪和标注。</p>
+              <div id="processing-queue" class="queue-list"><div class="muted-empty">尚无后台任务</div></div>
+            </div>
+          </section>
+
           <div class="split-section">
             <div>
-              <div class="panel-title"><h3>已保存脱敏图片</h3><span id="doc-count"></span></div>
+              <div class="panel-title">
+                <h3>已保存脱敏图片</h3>
+                <div class="document-batch-actions">
+                  <span id="doc-count"></span>
+                  <button id="bulk-ocr" class="tool">一键OCR</button>
+                  <button id="bulk-ai" class="tool">一键AI提取</button>
+                </div>
+              </div>
               <div id="document-list" class="document-grid"></div>
             </div>
             <div>
@@ -129,17 +203,76 @@
 
           <details class="model-manager">
             <summary>本地模型管理</summary>
+            <div class="ollama-provider-settings">
+              <label>Ollama运行位置
+                <select id="ollama-provider">
+                  <option value="DOCKER">Docker Ollama</option>
+                  <option value="WINDOWS_HOST">Windows宿主机 Ollama（AMD GPU）</option>
+                </select>
+              </label>
+              <button id="switch-ollama-provider" class="tool">测试连接并使用</button>
+              <span id="ollama-provider-status">正在读取当前设置…</span>
+            </div>
             <p>将 GGUF 放入 <code>models/llm/</code>。模型文件不会进入 Git；导入后由 Ollama 持久化卷管理。</p>
-            <button id="refresh-models" class="tool">刷新模型状态</button>
+            <button id="refresh-models" class="tool model-refresh-button" type="button">刷新模型状态</button>
+            <span id="model-refresh-status" class="model-refresh-status" role="status" aria-live="polite"></span>
+            <span id="current-model-status" class="current-model-status">当前模型：尚未查询</span>
             <div class="model-columns">
               <div><h4>已安装 Ollama 模型</h4><div id="installed-models" class="model-list">尚未查询</div></div>
-              <div><h4>待导入 GGUF</h4><div id="local-models" class="model-list">尚未扫描</div></div>
+              <div><h4>本地 GGUF 文件</h4><div id="local-models" class="model-list">尚未扫描</div></div>
             </div>
           </details>
         </div>
       </section>
     </section>
+
+    <section id="data-preview-view" class="panel data-preview-view" hidden>
+      <div class="data-preview-header">
+        <div>
+          <span class="eyebrow">PATIENT DATASET</span>
+          <h2>患者数据预览</h2>
+          <p id="data-preview-summary">正在读取患者数据…</p>
+        </div>
+        <button id="close-data-preview" class="tool" type="button">返回患者选择</button>
+      </div>
+      <div class="data-preview-toolbar">
+        <label>数据范围
+          <select id="data-preview-scope">
+            <option value="all">全部当前结果</option>
+            <option value="verified">仅人工已确认</option>
+          </select>
+        </label>
+        <label>查找患者
+          <input id="data-preview-search" type="search" placeholder="输入7位病案号">
+        </label>
+        <button id="export-data-csv" class="primary" type="button">导出CSV</button>
+      </div>
+      <div id="data-preview-loading" class="muted-empty" hidden>正在整理全部患者数据…</div>
+      <div class="data-table-shell">
+        <table id="data-preview-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="data-preview-legend">
+        <span><i class="verified-cell"></i>人工已确认</span>
+        <span><i class="pending-cell"></i>AI结果 / 待审核</span>
+      </div>
+    </section>
   </main>
+
+  <dialog id="patient-review-dialog" class="patient-review-dialog">
+    <div class="patient-review-dialog-header">
+      <div><span class="eyebrow">PATIENT REVIEW</span><h2 id="patient-review-title">患者数据回顾</h2></div>
+      <button id="close-patient-review" class="tool" type="button">关闭</button>
+    </div>
+    <div class="patient-review-table-shell">
+      <table class="patient-review-table">
+        <thead><tr><th>问题</th><th>当前答案</th><th>状态</th></tr></thead>
+        <tbody id="patient-review-body"></tbody>
+      </table>
+    </div>
+  </dialog>
 
   <div id="toast" role="status"></div>
   <script src="/app.js" defer></script>

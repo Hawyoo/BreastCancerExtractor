@@ -1,0 +1,80 @@
+version: 0.2.0
+document_rules:
+  MEDICAL_RECORD_COVER:
+    - id: medical_record_cover_sex_exclusion
+      field: sex
+      action: EXCLUDE
+      description: 病案首页性别栏版式复杂，本队列禁止从病案首页抽取性别；应从入院记录等其他页面提取。
+  ADMISSION:
+    - id: admission_sex_preferred_source
+      field: sex
+      description: 入院记录等叙述性页面是性别的允许来源；必须有明确性别文字才可抽取。
+    - id: last_menstrual_period_near_admission
+      field: menopausal_status
+      description: 若末次月经记录为与入院日期接近的具体日期，则推断未绝经。
+      extraction:
+        required_context: [末次月经具体日期, 入院日期]
+        output: 'NO'
+        source_mode: INFERRED
+      safeguards:
+        - 无法同时取得两个日期时不得推断。
+        - 保存两个日期及原文，并强制进入人工复核。
+    - id: metastatic_at_presentation_default_no
+      field: metastatic_at_presentation
+      description: 若入院记录未明确提及来院时远处转移，允许按队列口径默认编码为NO。
+      extraction:
+        output: 'NO'
+        source_mode: INFERRED
+      safeguards:
+        - 区域淋巴结转移不能当作远处转移。
+        - 后续发现明确远处转移时必须产生冲突提示。
+  DISCHARGE:
+    - id: metastatic_at_presentation_default_no
+      field: metastatic_at_presentation
+      description: 若出院记录及既有患者观察均未明确提及来院时远处转移，允许按队列口径默认编码为NO。
+      extraction:
+        output: 'NO'
+        source_mode: INFERRED
+      safeguards:
+        - 区域淋巴结转移不能当作远处转移。
+        - 后续发现明确远处转移时必须产生冲突提示。
+    - id: supportive_immune_care_is_not_antitumor_immunotherapy
+      fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
+      action: EXCLUDE_CONTEXT
+      description: “住院给予免疫及对症支持治疗”、升白针和粒细胞集落刺激因子属于支持治疗，不是抗肿瘤免疫治疗；没有明确抗肿瘤免疫药物时不得据此输出YES。
+  ULTRASOUND:
+    - id: lesion_size_three_dimensions
+      fields: [pre_us_tumor_size_mm, post_neoadj_us_size_mm]
+      description: 按原文顺序提取长、宽、高三个径线，统一为mm；第三径缺失时留空，不得补造。
+      accepted_separators: ['×', 'x', 'X', '*']
+  MAMMOGRAPHY:
+    - id: lesion_size_three_dimensions
+      description: 钼靶肿块尺寸按原文顺序保留最多三个径线，统一为mm；当前宽表没有独立钼靶尺寸列时保留在原文证据和影像元数据中。
+      accepted_separators: ['×', 'x', 'X', '*']
+  MRI:
+    - id: lesion_size_three_dimensions
+      fields: [pre_mri_tumor_size_mm, post_neoadj_mri_size_mm]
+      description: 按原文顺序提取长、宽、高三个径线，统一为mm；第三径缺失时留空，不得补造。
+      accepted_separators: ['×', 'x', 'X', '*']
+  BIOPSY_PATHOLOGY:
+    - id: pathology_grade_single_arabic_digit
+      fields: [primary_pathology_grade, node_pathology_grade, metastasis_pathology_grade]
+      description: 同一解剖与时间点的病理分级只输出一个值；将G1/G2/G3、I/II/III、一级/二级/三级分别归一化为阿拉伯数字1/2/3。存在多个不一致分级时保留优先候选并进入人工复核，不得并列输出多个答案。
+  SURGICAL_PATHOLOGY:
+    - id: surgical_pathology_is_primary_postoperative_source
+      fields: [postop_tumor_pathology_type, postop_tumor_pathology_grade, postop_node_metastasis, pathological_stage]
+      description: 术后肿块病理类型、分级、区域淋巴结结果及pTNM/ypTNM以本术后病理报告为首选来源；出院摘要和手术记录不得覆盖本报告。
+    - id: postop_tumor_other_ihc_excludes_core_four
+      field: postop_tumor_other_ihc
+      description: 仅记录术后肿块ER、PR、HER2、Ki-67以外的其他免疫组化标志物，例如AR、CK5/6、EGFR、GATA3、E-cadherin、P53等。ER、PR、HER2、Ki-67已有独立字段，不得在本字段重复；若原文只有这四项，本字段留空。
+      exclude_markers: [ER, PR, HER2, HER-2, Ki67, Ki-67]
+    - id: postop_tumor_pathology_grade_single_arabic_digit
+      field: postop_tumor_pathology_grade
+      description: 术后肿块病理分级只输出一个阿拉伯数字1、2或3；G2、II级、Ⅱ级、二级均输出2。不要输出G2、II、2级或多个并列结果。
+  TREATMENT:
+    - id: conditional_treatment_questions
+      description: 方案、周期等依赖字段只有当前提治疗字段为YES时才适用；前提为NO时依赖字段输出NOT_APPLICABLE，导出显示NA。
+    - id: supportive_immune_care_is_not_antitumor_immunotherapy
+      fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
+      action: EXCLUDE_CONTEXT
+      description: “免疫及对症支持治疗”、升白针、G-CSF等支持治疗不得识别为抗肿瘤免疫治疗；需要明确抗肿瘤免疫治疗名称或具体免疫检查点抑制剂证据。

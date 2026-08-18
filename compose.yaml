@@ -8,6 +8,7 @@ services:
     environment:
       OFFLINE_MODE: ${OFFLINE_MODE:-true}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OCR_URL: ${OCR_URL:-http://ocr:8001}
       DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-}
       DATABASE_PATH: /runtime/database/extractor.db
       WORKSPACE_PATH: /runtime/workspace
@@ -24,18 +25,33 @@ services:
     depends_on:
       ollama:
         condition: service_started
+      ocr:
+        condition: service_started
     networks:
       - internal
 
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    environment:
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-1}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ollama_models:/root/.ollama
       - ./models/llm:/models/llm:ro
     networks:
       - internal
     # No host port is published. Only the app container can reach Ollama.
+
+  ocr:
+    build:
+      context: .
+      dockerfile: ocr/Dockerfile
+    image: breast-cancer-extractor-ocr:0.1.0
+    restart: unless-stopped
+    networks:
+      - internal
+    # OCR models are baked into this image for fully offline runtime.
 
 volumes:
   ollama_models:

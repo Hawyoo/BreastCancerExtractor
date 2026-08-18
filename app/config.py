@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_name: str = "Breast Cancer Extractor"
     offline_mode: bool = True
     ollama_url: str = "http://127.0.0.1:11434"
+    ocr_url: str = "http://127.0.0.1:8001"
     default_llm_model: str = ""
     database_path: Path = Path("database/extractor.db")
     workspace_path: Path = Path("workspace")
@@ -20,8 +21,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def enforce_offline_llm_endpoint(self) -> "Settings":
         hostname = urlparse(self.ollama_url).hostname
-        if self.offline_mode and hostname not in {"ollama", "localhost", "127.0.0.1", "::1"}:
+        allowed = {"ollama", "ocr", "host.docker.internal", "localhost", "127.0.0.1", "::1"}
+        ocr_hostname = urlparse(self.ocr_url).hostname
+        if self.offline_mode and hostname not in allowed:
             raise ValueError("OFFLINE_MODE only permits an in-process or local Ollama endpoint")
+        if self.offline_mode and ocr_hostname not in allowed:
+            raise ValueError("OFFLINE_MODE only permits a local OCR endpoint")
         return self
 
 

@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS regions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ocr_results (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    engine TEXT NOT NULL,
+    version TEXT,
+    full_text TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS observations (
     id TEXT PRIMARY KEY,
     patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,

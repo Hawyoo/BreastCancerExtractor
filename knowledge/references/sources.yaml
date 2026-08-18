@@ -1,11 +1,21 @@
 version: 0.1.0
-last_verified: 2026-08-17
+last_verified: 2026-08-18
 policy:
   - Public URLs and bibliographic metadata may be committed.
   - Licensed full text or terminology distributions belong in local_knowledge/ and must not be committed.
   - Dynamic terminologies require release version, retrieval date, and file digest at import.
 
 sources:
+  - id: wps_questionnaire_2026_04_09
+    domain: 项目问卷与数据口径
+    title: 信息收集表-2026.4.9最终版
+    organization: 用户提供的WPS表单
+    version: 2026.4.9最终版
+    year: 2026
+    url: https://f.kdocs.cn/g/kD2Xj3eU/
+    use: 队列字段顺序、题型、可见选项、复合题和条件展开关系
+    access: authenticated_user_provided_form
+
   - id: nhc_breast_2022
     domain: 中国临床基线
     title: 乳腺癌诊疗指南（2022年版）
@@ -40,6 +50,14 @@ sources:
     url: https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/cancer-staging-systems/cancer-staging-system-products/
     use: 获取获授权的乳腺T/N/M和分期组规则、勘误或API/DLL
     access: licensed_content
+
+  - id: nci_breast_tnm_pdq
+    domain: TNM分期
+    title: Breast Cancer Treatment (PDQ) - TNM and post-neoadjuvant staging
+    organization: U.S. National Cancer Institute
+    url: https://www.cancer.gov/types/breast/hp/breast-treatment-pdq
+    use: cTNM、ycTNM、pTNM、ypTNM的时间语境，以及治疗前影像/穿刺和新辅助后分期的公开说明
+    access: public_government_reference
 
   - id: who_breast_6
     domain: 病理分类
@@ -220,4 +238,3 @@ sources:
     url: https://docs.snomed.org/snomed-ct-user-guides/mlds-user-guide/member-affiliate-licensing-information
     use: 疾病、临床发现、手术和治疗概念映射；部署前必须核对所在地区许可
     access: licensed_by_territory
-

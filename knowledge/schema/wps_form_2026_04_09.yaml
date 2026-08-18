@@ -1,0 +1,204 @@
+version: 1.0.0
+title: 信息收集表-2026.4.9最终版题型与条件逻辑
+source_url: https://f.kdocs.cn/g/kD2Xj3eU/
+verified_at: '2026-08-18'
+verification:
+  authenticated_form: true
+  submitted: false
+  method: 登录后临时选择选项以展开条件题，读取可见题名、控件类型、选项和说明，不提交表单。
+  expanded_question_count: 127
+  note: WPS文件上传题在本系统中映射为来源文档或证据，不把图片路径当作问卷答案。
+
+form_policy:
+  unknown_default: 留空
+  exception: 是否绝经具有明确的“不详”选项，可编码为UNKNOWN。
+  conditional_not_applicable: 前提明确为NO时，依赖字段内部编码NOT_APPLICABLE，CSV显示NA。
+  no_submission_from_app: 本文件仅用于统一本地抽取与导出，不向WPS自动提交患者数据。
+
+choice_fields:
+  sex:
+    type: single_choice
+    options: {女: FEMALE, 男: MALE}
+  menopausal_status:
+    type: single_choice
+    options: {是: 'YES', 否: 'NO', 不详: 'UNKNOWN'}
+  yes_no:
+    type: single_choice
+    options: {是: 'YES', 否: 'NO'}
+    fields:
+      - has_chronic_disease
+      - has_family_history
+      - has_given_birth
+      - smoking_history
+      - drinking_history
+      - first_breast_cancer
+      - prior_breast_surgery
+      - concurrent_other_cancer
+      - metastatic_at_presentation
+      - pre_us_available
+      - pre_us_nodes_normal
+      - pre_mmg_available
+      - pre_mmg_calcification
+      - pre_mri_available
+      - pre_mri_nodes_normal
+      - primary_biopsy_performed
+      - node_biopsy_performed
+      - metastasis_biopsy_performed
+      - neoadjuvant_received
+      - post_neoadj_us_available
+      - post_neoadj_us_tumor_response
+      - post_neoadj_us_nodes_response
+      - post_neoadj_mri_available
+      - post_neoadj_mri_tumor_response
+      - post_neoadj_mri_nodes_response
+      - surgery_performed
+      - reconstruction_performed
+      - postop_node_metastasis
+      - post_neoadj_pcr
+      - postoperative_radiotherapy
+      - postoperative_chemotherapy
+      - postoperative_endocrine
+      - postoperative_immunotherapy
+      - postoperative_targeted
+      - palliative_systemic_treatment
+      - recurrence
+      - followup_metastasis
+      - second_primary_cancer
+      - death
+  chronic_disease:
+    type: multiple_choice
+    options:
+      高血压: HYPERTENSION
+      糖尿病: DIABETES
+      冠心病: CORONARY_HEART_DISEASE
+      其他: OTHER
+  breast_laterality:
+    type: single_choice
+    options: {左侧: LEFT, 右侧: RIGHT, 双侧: BILATERAL}
+  pre_mmg_single_lesion:
+    type: single_choice
+    options: {是: SINGLE, 多发: MULTIPLE}
+    note: WPS第二个选项文字是“多发”，不是“否”。
+  pre_mmg_birads:
+    type: single_choice
+    options:
+      0级: '0'
+      1级: '1'
+      2级: '2'
+      3级: '3'
+      4级: '4'
+      4A级: '4A'
+      4B级: '4B'
+      4C级: '4C'
+      5级: '5'
+      6级: '6'
+      其他: OTHER
+    accepted_report_subcategories: ['4A', '4B', '4C']
+    note: 最终结构化值直接保存类别本身，如3、4B；不添加“BI-RADS”前缀。审核选项同时提供4、4A、4B、4C，优先保留报告明确记录的亚类。
+  molecular_subtype:
+    type: single_choice
+    fields: [primary_molecular_subtype, node_molecular_subtype, metastasis_molecular_subtype, postop_tumor_molecular_subtype]
+    options:
+      Luminal A: LUMINAL_A
+      Luminal B: LUMINAL_B
+      HER2过表达型: HER2_ENRICHED
+      三阴性型: TRIPLE_NEGATIVE
+      不详: 'UNKNOWN'
+  surgery_type:
+    type: single_choice
+    options: {全切: MASTECTOMY, 保乳: BREAST_CONSERVING}
+  reconstruction_type:
+    type: single_choice
+    options: {假体重建: IMPLANT, 自体皮瓣重建: AUTOLOGOUS_FLAP, 联合重建: COMBINED}
+
+composite_fields:
+  er_pr_ki67:
+    fields:
+      - primary_er
+      - primary_pr
+      - primary_ki67
+      - node_er
+      - node_pr
+      - node_ki67
+      - metastasis_er
+      - metastasis_pr
+      - metastasis_ki67
+      - postop_tumor_er
+      - postop_tumor_pr
+      - postop_tumor_ki67
+    options: {'+': 'POSITIVE', '-': 'NEGATIVE', 不详: 'UNKNOWN'}
+    positive_detail: 阳性时在对应“补充填空”字段记录百分比。
+  her2_ihc:
+    fields: [primary_her2, node_her2, metastasis_her2, postop_tumor_her2, postop_node_her2]
+    options: {'3+': '3+', '2+': '2+', '1+': '1+', '-': '0', 不详: 'UNKNOWN'}
+    normalization: negative、阴性、-、0、0+统一保存为'0'；界面显示选项“-”，不得保存NEGATIVE。
+  clinical_stage:
+    type: three_component_text
+    components: [cT, cN, cM]
+  pathological_stage:
+    type: three_component_text
+    components: [pT_or_ypT, pN_or_ypN, pM_or_ypM]
+  post_neoadjuvant_assessment:
+    components:
+      post_neoadj_pcr: {type: single_choice, options: {是: 'YES', 否: 'NO'}}
+      post_neoadj_mp_grade: {type: integer_text, normalized_values: [MP1, MP2, MP3, MP4, MP5]}
+      post_neoadj_rcb_grade: {type: text, normalized_values: [RCB-0, RCB-I, RCB-II, RCB-III]}
+
+normalization:
+  pathology_grade:
+    fields: [primary_pathology_grade, node_pathology_grade, metastasis_pathology_grade, postop_tumor_pathology_grade]
+    form_type: integer_text
+    one_value_per_field_and_context: true
+    map:
+      'G1/I/Ⅰ/一级/1级': '1'
+      'G2/II/Ⅱ/二级/2级': '2'
+      'G3/III/Ⅲ/三级/3级': '3'
+    output_values: ['1', '2', '3']
+  postop_tumor_other_ihc:
+    include: ER、PR、HER2、Ki-67以外的术后肿块免疫组化标志物
+    exclude_markers: [ER, PR, HER2, HER-2, Ki67, Ki-67]
+    empty_when_only_core_markers: true
+
+conditional_sections:
+  - {when: {field: menopausal_status, equals: YES}, reveal: [menopause_age]}
+  - {when: {field: has_chronic_disease, equals: YES}, reveal: [chronic_disease, chronic_disease_other]}
+  - {when: {field: has_family_history, equals: YES}, reveal: [family_history_detail]}
+  - {when: {field: has_given_birth, equals: YES}, reveal: [parity_count, childbirth_age]}
+  - {when: {field: prior_breast_surgery, equals: YES}, reveal: [prior_breast_surgery_date, prior_breast_surgery_type]}
+  - {when: {field: concurrent_other_cancer, equals: YES}, reveal: [concurrent_other_cancer_detail]}
+  - {when: {field: metastatic_at_presentation, equals: YES}, reveal: [metastatic_site]}
+  - {when: {field: pre_us_available, equals: YES}, reveal: [pre_us_tumor_size_mm, pre_us_tumor_location, pre_us_nipple_distance_cm, pre_us_skin_distance, pre_us_nodes_normal, pre_us_nodes_detail]}
+  - {when: {field: pre_mmg_available, equals: YES}, reveal: [pre_mmg_single_lesion, pre_mmg_birads, pre_mmg_birads_detail, pre_mmg_calcification, pre_mmg_nodes, pre_mmg_other_single, pre_mmg_multifocal]}
+  - {when: {field: pre_mri_available, equals: YES}, reveal: [pre_mri_tumor_size_mm, pre_mri_nodes_normal, pre_mri_nodes_detail]}
+  - {when: {field: primary_biopsy_performed, equals: YES}, reveal_group: primary_biopsy}
+  - {when: {field: node_biopsy_performed, equals: YES}, reveal_group: node_biopsy}
+  - {when: {field: metastatic_at_presentation, equals: YES}, reveal: [metastasis_biopsy_performed]}
+  - {when: {field: metastasis_biopsy_performed, equals: YES}, reveal_group: metastasis_biopsy}
+  - {when: {field: neoadjuvant_received, equals: YES}, reveal: [neoadjuvant_regimen, neoadjuvant_cycles, post_neoadj_us_available, post_neoadj_us_size_mm, post_neoadj_us_tumor_response, post_neoadj_us_nodes, post_neoadj_us_nodes_response, post_neoadj_mri_available, post_neoadj_mri_size_mm, post_neoadj_mri_tumor_response, post_neoadj_mri_nodes, post_neoadj_mri_nodes_response]}
+  - {when: {field: surgery_performed, equals: YES}, reveal_group: surgery_and_surgical_pathology}
+  - {when: {field: reconstruction_performed, equals: YES}, reveal: [reconstruction_type]}
+  - {when: {field: postoperative_chemotherapy, equals: YES}, reveal: [postoperative_chemotherapy_regimen, postoperative_chemotherapy_cycles]}
+  - {when: {field: postoperative_endocrine, equals: YES}, reveal: [postoperative_endocrine_regimen]}
+  - {when: {field: postoperative_immunotherapy, equals: YES}, reveal: [postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]}
+  - {when: {field: postoperative_targeted, equals: YES}, reveal: [postoperative_targeted_regimen, postoperative_targeted_cycles]}
+  - {when: {field: palliative_systemic_treatment, equals: YES}, reveal: [palliative_systemic_regimen]}
+  - {when: {field: recurrence, equals: YES}, reveal: [recurrence_detail, recurrence_pathology_evidence]}
+  - {when: {field: followup_metastasis, equals: YES}, reveal: [followup_metastasis_detail, followup_metastasis_pathology_evidence]}
+  - {when: {field: second_primary_cancer, equals: YES}, reveal: [second_primary_cancer_detail, second_primary_pathology]}
+  - {when: {field: death, equals: YES}, reveal: [death_date]}
+
+form_only_evidence_items:
+  - recurrence_pathology_evidence
+  - followup_metastasis_pathology_evidence
+  - second_primary_pathology
+  - pre_mmg_other_single
+  - pre_mmg_multifocal
+  - primary_other_ihc
+  - node_other_ihc_1
+  - node_other_ihc_2
+  - metastasis_other_ihc
+  - postop_tumor_other_ihc
+
+differences_from_current_extended_dictionary:
+  - 当前WPS展开页没有显示“术后淋巴结ER/PR/HER2/Ki-67、其他IHC、分子分型”题；扩展字典暂时保留这些字段，但标记为非WPS主表题，避免删除用户早先明确要求的数据。
+  - WPS含“姓名”，本系统不将姓名纳入科研结构化字段，也不自动保存未脱敏原图。

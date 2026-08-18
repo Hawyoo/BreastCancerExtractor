@@ -13,13 +13,22 @@
 - SQLite 表：`patients`、`documents`、`regions`、`observations`、`audit_log`、`model_runs`；
 - `UNPROCESSED → AI_PROCESSED / REVIEW_REQUIRED → VERIFIED` 状态基础；
 - AI 原值、当前值、人工修改和人工确认分离保存；
-- Ollama 已安装模型查询、本地 `models/llm/*.gguf` 扫描和导入接口；
-- Docker Compose 本地部署，Ollama 不向宿主机公开端口；
+- PaddleOCR 独立本地服务，脱敏 PNG 可一键 OCR，文字与坐标结果保存到 SQLite；
+- Ollama 已安装模型查询、本地 `models/llm/*.gguf` 扫描与导入，以及按字段字典的结构化 AI 抽取；
+- 确认脱敏并保存后自动依次执行 OCR 和 AI 抽取；任一阶段失败时保留脱敏图片及此前已完成的结果；
+- 支持一次选择多张图片或患者文件夹；确认一张后自动打开下一张，OCR 与 AI 在页面下方后台队列中顺序运行，不锁定裁剪和 ROI 编辑区；
+- 夜间模式可手动切换，默认跟随 Windows 系统主题；
+- 图片编辑区提供“原图 / 增强图”开关，选择在图片之间及页面刷新后保持；增强图仅在浏览器内存中通过非生成式重采样、屏纹抑制和对比度调整生成，保存时记录增强模式与版本；
+- 裁剪框首次拖动建立后，可通过四条边和八个控制点继续微调；
+- ROI首次框选后同样可选中并拖动四条边或八个控制点微调；ROI类型随文档类型切换为对应字段；
+- 每张已保存脱敏图片可单独删除；同步删除其 ROI、OCR 和 AI 字段，保留删除审计记录；
+- “已保存脱敏图片”支持一键OCR尚未识别的图片，以及一键对已完成OCR但尚未AI处理的图片进行结构化提取；批量任务进入后台队列且不重复覆盖已有结果；
+- Docker Compose 本地部署，OCR 与 Ollama 均不向宿主机公开端口；
 - 158 项队列字段的机器可读数据字典、乳腺癌病理 Schema、IHC 规则和 Prompt；
 - TNM“病历记录优先、缺失时推断”的策略，区分 c/p/yc/yp 并要求推断结果人工复核；
 - 公开知识库与 `local_knowledge/` 本地授权/内部资料分离。
 
-尚未完成的模块包括 PaddleOCR/PP-Structure 实际推理、LLM 自动抽取任务队列、完整 AJCC 确定性分期规则、证据文字框精确回链、Excel 导出和离线版镜像打包。代码结构已为这些阶段保留边界，但 README 不把骨架描述成已完成功能。
+尚未完成的模块包括完整 AJCC 确定性分期规则引擎、证据文字框精确回链、原生 XLSX 导出和离线版镜像打包。当前已支持患者级批量处理队列、全部患者宽表预览及 Excel 兼容 UTF-8 CSV 导出。AI 可抽取原文 TNM；原文没有 TNM 时可按事实推断，但推断结果强制进入人工复核。
 
 字段定义和仍需补充的医院口径详见 `knowledge/manual/知识库手册.md`。
 
@@ -37,13 +46,26 @@ workspace/patients/<patient_code>/sanitized/<uuid>.png
 
 注意：浏览器崩溃转储、操作系统交换文件、屏幕录制等属于操作系统层面的风险，无法仅靠 Web 应用绝对消除。医院部署仍应配合加密磁盘、受控账户和禁用外网策略。
 
-`OFFLINE_MODE=true` 时程序只允许连接 `ollama`、`localhost` 或回环地址，同时前端 CSP 将网络请求限制到当前本地站点。当前代码没有遥测、CDN、第三方字体或外部错误上报。
+`OFFLINE_MODE=true` 时程序只允许连接 Compose 内的 `ollama`/`ocr`、Windows 宿主机桥接地址、`localhost` 或回环地址，同时前端 CSP 将网络请求限制到当前本地站点。当前代码没有遥测、CDN、第三方字体或外部错误上报。
 
 ## 在一台新 Windows 电脑上安装
 
-本节用于从零安装。当前仓库提供的是 **MVP 源码构建版**：可以运行患者管理、浏览器内裁剪/脱敏/ROI、审计基础和本地 Ollama 接口；PaddleOCR、自动 LLM 抽取任务队列、Excel 导出及制作好的离线安装包仍未完成。首次测试请勿使用真实病历，先使用无身份信息的模拟图片验证环境。
+本节用于从零安装。当前仓库提供的是 **MVP 源码构建版**：可以运行患者管理、浏览器内裁剪/脱敏/ROI、后台批量任务队列、PaddleOCR、Ollama 结构化抽取、人工审核、全部患者宽表预览及 Excel 兼容 CSV 导出；原生 XLSX 导出和制作好的离线安装包仍未完成。
 
-### 1. 安装前检查
+### 最简单的安装方式：双击一个文件
+
+1. 在 GitHub Desktop 克隆仓库，或下载 ZIP 后完整解压；
+2. 双击项目根目录的 **`install.bat`**；
+3. 安装器会自动检查 Windows、CPU 虚拟化、磁盘空间、WSL2、Docker Desktop、Docker Compose 和本机配置；WSL2 缺失时自动安装，但不会在每次启动时强制联网更新；
+4. WSL 或 Docker Desktop 缺失时，安装器会在征得确认后执行安装；如果 Windows 要求重启，重启后再次双击 `install.bat`；
+5. 容器启动并通过健康检查后，安装器会自动打开 <http://127.0.0.1:8765>；
+6. 以后日常使用只需双击 **`start.bat`**，它会自动启动 Docker Desktop、等待 Docker Engine并打开软件；双击 `stop.bat` 只停止本项目，双击 `stop-all.bat` 可退出 Docker Desktop、关闭 WSL 并释放 `vmmem`。`install.bat` 和 `stop-all.bat` 显示结果后均等待5秒自动关闭，不要求按任意键。
+
+`install.bat` 会在首次安装或需要更新程序时构建 Docker 镜像并安装依赖；构建结果会保存在 Docker Desktop 中。日常的 `start.bat` 只执行 `docker compose up -d`，直接复用已有镜像，不会重新安装 Python、PaddleOCR 或系统软件包。
+
+自动安装器不会自行修改 BIOS/UEFI，不会绕过 Windows 管理员授权，不会替机构接受 Docker 许可，也不会擅自下载体积较大的 LLM 模型。遇到这些情况时，它会停在明确的提示处。下面的手动步骤主要用于排查自动安装失败。
+
+### 1. 手动检查安装条件
 
 建议准备：
 
@@ -56,7 +78,7 @@ workspace/patients/<patient_code>/sanitized/<uuid>.png
 
 Docker 当前要求 WSL 2.1.5 或更高版本，并列出了受支持的 Windows 版本和硬件要求；安装前以 [Docker Desktop for Windows 官方页面](https://docs.docker.com/desktop/setup/install/windows-install/) 的实时说明为准。
 
-### 2. 安装或更新 WSL2
+### 2. 手动安装或更新 WSL2
 
 1. 在开始菜单搜索 `PowerShell`；
 2. 右键选择“以管理员身份运行”；
@@ -77,7 +99,7 @@ wsl --status
 
 Microsoft 的标准流程是管理员 PowerShell 执行 `wsl --install` 后重启，详见 [Microsoft WSL 安装说明](https://learn.microsoft.com/windows/wsl/install)。如果电脑已经安装 WSL，重点执行 `wsl --update`；如果命令提示虚拟化未启用，需要先进入 BIOS/UEFI 开启 Intel VT-x/AMD-V，再回到本步骤。
 
-### 3. 安装 Docker Desktop
+### 3. 手动安装 Docker Desktop
 
 1. 从 [Docker Desktop for Windows 官方页面](https://docs.docker.com/desktop/setup/install/windows-install/) 下载安装程序；
 2. 运行安装程序，使用默认的 WSL 2 backend；
@@ -128,6 +150,7 @@ Copy-Item .env.example .env
 APP_PORT=8765
 OFFLINE_MODE=true
 OLLAMA_URL=http://ollama:11434
+OCR_URL=http://ocr:8001
 DEFAULT_LLM_MODEL=
 MAX_SANITIZED_IMAGE_MB=25
 ```
@@ -136,7 +159,8 @@ MAX_SANITIZED_IMAGE_MB=25
 
 - `APP_PORT`：浏览器访问端口；首次安装先不要修改；
 - `OFFLINE_MODE=true`：应用只允许使用本地/容器内 Ollama；
-- `OLLAMA_URL`：Compose 内部地址，不要改成互联网地址；
+- `OLLAMA_URL`：Compose 内部 Ollama 地址，不要改成互联网地址；
+- `OCR_URL`：Compose 内部 OCR 地址，默认保持 `http://ocr:8001`；
 - `DEFAULT_LLM_MODEL`：模型导入后再填写其 Ollama 名称；
 - `MAX_SANITIZED_IMAGE_MB`：单张脱敏 PNG 的大小上限。
 
@@ -160,7 +184,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-应至少看到 `app` 和 `ollama` 两个服务处于运行状态。再访问健康检查：
+应看到 `app`、`ocr` 和 `ollama` 三个服务处于运行状态。再访问健康检查：
 
 <http://127.0.0.1:8765/api/health>
 
@@ -171,7 +195,8 @@ docker compose ps
   "status": "ok",
   "offline_mode": true,
   "external_api": "disabled",
-  "llm": "local-ollama"
+  "ollama": {"available": true, "models": 0},
+  "ocr": {"available": true, "engine": "PaddleOCR"}
 }
 ```
 
@@ -180,11 +205,23 @@ docker compose ps
 ```powershell
 docker compose logs --tail 200 app
 docker compose logs --tail 200 ollama
+docker compose logs --tail 200 ocr
 ```
 
 ### 7. 安装本地 LLM 模型
 
 软件可以在没有模型时启动，但 LLM 抽取功能需要 Ollama 模型。模型不要放入 Git，也不要直接修改 Docker 的 `ollama_models` 卷。
+
+> Windows 已安装 Ollama 不等于 Docker 内的 Ollama 已有模型。默认版使用 Compose 中的独立 Ollama 容器，Windows 用户目录下的模型与 Docker 命名卷相互隔离。这样离线版更容易复制和复现。软件顶部会分别显示 Ollama、模型数量和 OCR 的真实连接状态。
+
+Web端“本地模型管理”现在可以在以下两个固定模式间切换：
+
+- `Docker Ollama`：默认模式，模型保存在Docker命名卷；
+- `Windows宿主机 Ollama（AMD GPU）`：应用通过 `http://host.docker.internal:11434` 连接Windows Ollama。
+
+切换按钮会先测试目标服务，连接成功后才保存设置。选择结果保存在 `database/runtime_config.json`，容器升级后仍保留。为维持离线边界，Web端不接受任意URL。
+
+使用宿主机模式前，需要先启动Windows Ollama，并使其允许Docker Desktop的WSL虚拟网络访问。可在Windows用户环境变量中设置 `OLLAMA_HOST=0.0.0.0:11434`，完全退出并重新启动Ollama；Windows防火墙应只允许受信任的本机/WSL虚拟网络访问11434，不要向公共网络开放。然后在Web端选择“Windows宿主机 Ollama（AMD GPU）”，点击“测试连接并使用”。顶部状态会显示当前运行位置以及模型运行后报告的 `CPU/GPU` 状态。
 
 #### 方式 A：联网下载 Ollama 模型
 
@@ -246,6 +283,8 @@ docker compose up -d --build
 
 Ollama 导入后的运行模型保存在 Docker 命名卷 `ollama_models`；`models/llm/` 是用户自行维护的原始 GGUF 仓库。二者可能同时占用磁盘。切换模型不会更改已经保存的 AI 结果或人工确认记录。
 
+本地 GGUF 导入采用当前 Ollama API：程序先计算文件 SHA256，通过 `/api/blobs/:digest` 注册模型文件，再使用 `/api/create` 的 `files` 字段创建模型。重复导入同一文件时会复用已有 blob。参考：[Ollama 导入 GGUF](https://docs.ollama.com/import)、[Ollama Create API](https://docs.ollama.com/api/create)。
+
 ### 8. 首次功能验证
 
 正式使用前按以下顺序验证：
@@ -255,12 +294,12 @@ Ollama 导入后的运行模型保存在 Docker 命名卷 `ollama_models`；`mod
 3. 在浏览器中裁剪；
 4. 对模拟姓名和编号使用实心遮盖；
 5. 框选一个或多个 ROI；
-6. 点击完成脱敏并导入；
-7. 刷新患者详情，确认只显示脱敏后的图片；
+6. 点击“确认脱敏并保存”，该张原图被释放并自动打开下一张；
+7. OCR 和 AI 自动进入页面下方后台队列，可继续处理后续图片，无需等待；
 8. 检查项目目录，未经脱敏原图不应出现在 `workspace/`；
 9. 确认上述流程无误后，再制定真实病历的受控测试方案。
 
-当前 MVP 尚未完成自动 OCR→LLM→Excel 全流程，因此成功启动不等于全部产品功能已经完成。
+保存脱敏图后，系统会自动顺序执行 OCR 和 AI 抽取。若某一步失败，已保存的脱敏图片以及此前已完成的 OCR 结果不会丢失。AI结果进入字段审核区，人工可修改并确认。首页“数据预览”可按问卷顺序查看全部患者宽表，并可切换“全部当前结果”或“仅人工已确认”，导出带 UTF-8 BOM 的 Excel 兼容 CSV；原生 XLSX 导出尚未完成。
 
 ### 9. 日常启动与停止
 
@@ -277,6 +316,14 @@ docker compose stop
 ```
 
 停止容器不会删除数据库、脱敏图片或模型。不要使用 `docker compose down -v`，因为 `-v` 会删除 Ollama 模型卷。
+
+如果希望同时退出 Docker Desktop、关闭全部 WSL2 虚拟机并释放 `vmmem`，双击：
+
+```text
+stop-all.bat
+```
+
+脚本会先警告并要求输入 `Y`。它会停止本项目容器、正常停止 Docker Desktop，然后执行 `wsl --shutdown`。这不会删除镜像、数据库、脱敏图片或 Ollama 模型卷，但会同时中断该电脑上其他正在运行的 WSL 发行版；有其他 WSL 工作时只使用普通 `stop.bat`。
 
 ### 10. 更新 GitHub 轻量版
 
@@ -366,13 +413,19 @@ uv run ruff check .
 
 ## 知识库来源与参考文献
 
-以下来源已于 **2026-08-17** 核对。机器可读登记表位于 `knowledge/references/sources.yaml`；其中记录来源 ID、版本、用途、访问方式和许可边界。项目采用以下原则：
+以下来源已于 **2026-08-18** 核对。机器可读登记表位于 `knowledge/references/sources.yaml`；其中记录来源 ID、版本、用途、访问方式和许可边界。项目采用以下原则：
 
 - 病历明确记载优先于模型推断；标准用于结构化、校验和缺失项推断，不用于覆盖原始记录；
 - 中国临床口径优先参考国家卫生健康委员会和中国抗癌协会/中华医学会指南，国际病理与生物标志物口径参考 AJCC、WHO/IARC、CAP、ASCO 等原始规范；
 - AJCC 分期表、WHO 分类全文、BI-RADS Atlas、SNOMED CT 等受版权或地区许可约束的内容只登记来源，不复制到公开仓库；获合法授权的本地资料放入 `local_knowledge/`；
 - NCIt、LOINC、RxNorm、ATC/DDD 等动态术语库导入时必须记录版本、获取日期及文件 SHA256，不默认把整个术语库提交到 Git；
 - 指南能提供定义，但不能替代本研究的汇总口径。解剖/预后分期、index lesion、治疗周期、复发事件等队列规则仍需在正式抽取前确定。
+
+### 项目问卷与数据口径
+
+| 来源 | 本项目用途 | 访问与许可 |
+|---|---|---|
+| [WPS《信息收集表-2026.4.9最终版》](https://f.kdocs.cn/g/kD2Xj3eU/) | 2026-08-18 登录后核对127个展开问题的题型、选项、复合题及跳题关系；机器可读整理见 `knowledge/schema/wps_form_2026_04_09.yaml` | 用户提供、需登录；仅保存题型与编码规则，不保存填写记录或患者数据 |
 
 ### 中国临床基线
 
@@ -387,6 +440,7 @@ uv run ruff check .
 |---|---|---|
 | [AJCC 当前分期版本状态](https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/version-9/) | 判断各疾病部位当前适用版本；乳腺在尚未被 Version 9 替换时继续使用第 8 版 | 状态页公开；本项目据此作版本判断 |
 | [AJCC Cancer Staging System Products](https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/cancer-staging-systems/cancer-staging-system-products/) | 获取合法授权的 T/N/M、解剖分期及预后分期规则或 API/DLL | 完整规则受许可约束，不随仓库分发 |
+| [NCI Breast Cancer Treatment (PDQ)—TNM 与新辅助后分期](https://www.cancer.gov/types/breast/hp/breast-treatment-pdq) | cTNM、ycTNM、pTNM、ypTNM 的时间语境；治疗前临床资料及新辅助后评估的公开说明 | 美国政府公开参考资料；用于流程和语境，不替代获授权 AJCC 规则 |
 | [WHO Classification of Tumours Online](https://tumourclassification.iarc.who.int/index.html)（Breast Tumours，第 6 版） | 乳腺肿瘤组织学类型规范名称与分类层级 | 全文需订阅/授权；仅登记引用与本地映射 |
 | [CAP Current Cancer Protocols—Breast](https://www.cap.org/protocols-and-guidelines/cancer-protocols/current-cancer-protocols/) | 穿刺、切除、分级、肿瘤范围、淋巴结、治疗反应、pTNM 和标志物报告字段 | 使用公开协议时保留版本与条款信息 |
 

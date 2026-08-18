@@ -1,0 +1,136 @@
+version: 0.1.0
+title: 本队列数据处理偏好
+
+source_priority:
+  sex:
+    exclude_documents: [MEDICAL_RECORD_COVER]
+    preferred_documents: [ADMISSION, DISCHARGE, SURGERY, TREATMENT]
+    rule: 病案首页版式复杂，禁止从病案首页提取性别；优先从其他叙述性病历页面提取。
+  _postoperative_pathology:
+    fields:
+      - postop_tumor_pathology_type
+      - postop_tumor_pathology_grade
+      - postop_tumor_er
+      - postop_tumor_pr
+      - postop_tumor_her2
+      - postop_tumor_ki67
+      - postop_tumor_other_ihc
+      - postop_node_metastasis
+      - postop_node_er
+      - postop_node_pr
+      - postop_node_her2
+      - postop_node_ki67
+      - postop_node_other_ihc
+      - pathological_stage
+    ordered_documents: [SURGICAL_PATHOLOGY, IHC, DISCHARGE, SURGERY]
+    rule: 术后肿块组织学、术后淋巴结病理和pTNM/ypTNM以术后病理报告为首选来源；手术记录仅描述术式和术中所见，不能覆盖术后病理结论。
+  clinical_stage:
+    ordered_documents: [DISCHARGE, ADMISSION, BIOPSY_PATHOLOGY, MRI, ULTRASOUND, MAMMOGRAPHY]
+    rule: 明确记录的治疗前cTNM优先；缺失时再综合治疗前查体、影像、原发灶穿刺、区域淋巴结穿刺和远处转移证据推断。
+  surgery_date:
+    ordered_documents: [SURGERY, DISCHARGE, ADMISSION]
+    rule: 手术日期以手术记录为首选来源，出院记录中的手术摘要仅作为次级来源。
+
+staging_summary:
+  clinical_stage:
+    preferred_output: cTNM
+    post_neoadjuvant_output: ycTNM
+    evidence_order: [explicit_record, pretreatment_history_and_exam, pretreatment_imaging, primary_biopsy, regional_node_biopsy, distant_metastasis_evidence]
+    rule: 临床分期首先保存治疗前明确记录的cTNM；没有明确记录时，才综合治疗前影像、查体和穿刺证据推断。新辅助治疗后的术前再评估只能标记ycTNM，不能覆盖原始cTNM。
+  pathological_stage:
+    preferred_output_without_neoadjuvant: pTNM
+    preferred_output_after_neoadjuvant: ypTNM
+    evidence_order: [explicit_surgical_pathology_stage, surgical_pathology_primary_tumor, surgical_pathology_regional_nodes, documented_distant_metastasis]
+    rule: 未行新辅助时使用pTNM；新辅助后手术病理使用ypTNM。T和N以术后病理报告为核心证据，手术记录不得替代术后病理。不得把未发现远处转移写成pM0。
+  shared_rules:
+    - 病历明确记录的同语境TNM优先于AI推断；记录与证据明显矛盾时保留记录并提示人工复核。
+    - 临床字段只接受cTNM或ycTNM，病理字段只接受pTNM或ypTNM；不得混用前缀。
+    - 输出必须包含T、N、M三个组成部分；未知部分使用TX、NX或无法评估，不得凭空补齐。
+    - 分期组与TNM组成分开理解；当前问卷字段优先填写规范化TNM，不用单独的I/II/III/IV替代。
+  component_evidence:
+    cT:
+      preferred_sources: [pretreatment_ultrasound, pretreatment_mammography, pretreatment_mri, clinical_examination]
+      rule: 同时列出超声、钼靶、MRI记录的治疗前肿块径线和日期；基于治疗前原发肿瘤的最大浸润范围提出cT候选，影像结果不一致时保留各自数值并进入人工复核。
+    pT_or_ypT:
+      preferred_sources: [surgical_pathology_invasive_tumor_size]
+      rule: 以术后病理报告记载的浸润癌最大径及局部侵犯为依据；新辅助后使用ypT。不得用手术记录中的目测大小覆盖病理大小，也不得把单纯原位癌范围或肿瘤床大小直接当作浸润癌pT大小。
+    cN:
+      preferred_sources: [clinical_examination, pretreatment_ultrasound, pretreatment_mri, regional_node_needle_biopsy]
+      rule: 综合区域淋巴结查体、影像及穿刺结果；可疑影像与穿刺阳性/阴性分别保留，不得只按淋巴结大小判断转移。
+    pN_or_ypN:
+      preferred_sources: [surgical_pathology_regional_nodes]
+      rule: 以术后病理的淋巴结部位、阳性数/检出数、转移灶大小和治疗时点为依据；新辅助后使用ypN。
+    M:
+      preferred_sources: [distant_staging_imaging, distant_site_pathology]
+      rule: M描述远处转移。临床无远处转移证据可形成cM0候选；pM仅在远处转移灶获得病理证实时使用，不存在pM0或ypM0的自动推断。
+
+treatment_classification:
+  antitumor_immunotherapy:
+    target_fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
+    positive_evidence:
+      - 明确写明抗肿瘤免疫治疗或免疫检查点抑制剂
+      - 出现具体抗肿瘤免疫药物，例如帕博利珠单抗、阿替利珠单抗、卡瑞利珠单抗、特瑞普利单抗或信迪利单抗
+    exclude_contexts:
+      - 住院给予免疫及对症支持治疗
+      - 免疫支持治疗
+      - 升白针、粒细胞集落刺激因子或重组人粒细胞刺激因子
+    rule: “免疫及对症支持治疗”属于常规支持治疗语境，不能据此填写术后免疫治疗YES；仅有支持治疗证据时该字段留空，而不是推断为NO。
+
+derivations:
+  menopause_from_last_menstrual_period:
+    target_field: menopausal_status
+    documents: [ADMISSION]
+    rule: 婚育史或月经史中的末次月经若记录为具体日期，且该日期与入院日期接近，判定为未绝经。
+    output: 'NO'
+    source_mode: INFERRED
+    needs_review: true
+    safeguards:
+      - 末次月经必须是可识别的日期，不能把年龄、年份或模糊文字误当完整日期。
+      - 必须同时取得入院日期并确认两者时间接近；无法比较时不得推断。
+      - 保存末次月经日期、入院日期及原文作为推断依据。
+  metastatic_at_presentation_default:
+    target_field: metastatic_at_presentation
+    rule: 完成入院记录或出院记录抽取后，若没有任何明确的来院时远处转移证据，默认编码为否。
+    output: 'NO'
+    source_mode: INFERRED
+    needs_review: true
+    safeguards:
+      - 后续若发现明确转移证据，必须产生冲突提示并由人工确认。
+      - 局部区域淋巴结转移不等同于远处转移。
+
+measurements:
+  breast_lesion_size:
+    applies_to: [ULTRASOUND, MAMMOGRAPHY, MRI]
+    unit: mm
+    dimensions: [length, width, height]
+    input_slots: 3
+    optional_slots: [height]
+    separators: ['×', 'x', 'X', '*']
+    rule: 按原文顺序保存最多三个径线值；常见为两个径线，第三个输入框允许留空，不得复制或臆测第三径。
+    conversion:
+      - cm统一换算为mm后保存。
+      - 保留原始尺寸文字作为证据。
+      - 不把三个径线相乘后称为体积；只有明确需要时才另行计算体积。
+
+conditional_questions:
+  representation:
+    unmet_prerequisite: NOT_APPLICABLE
+    export_value: NA
+    rule: 当前提问题不满足时，依赖问题不抽取为阴性或缺失，统一编码为NOT_APPLICABLE，宽表导出显示NA。
+  examples:
+    - prerequisite: {field: neoadjuvant_received, equals: 'YES'}
+      dependents: [neoadjuvant_regimen, neoadjuvant_cycles, post_neoadj_us_available, post_neoadj_mri_available]
+    - prerequisite: {field: postoperative_endocrine, equals: 'YES'}
+      dependents: [postoperative_endocrine_regimen]
+    - prerequisite: {field: postoperative_chemotherapy, equals: 'YES'}
+      dependents: [postoperative_chemotherapy_regimen, postoperative_chemotherapy_cycles]
+    - prerequisite: {field: postoperative_immunotherapy, equals: 'YES'}
+      dependents: [postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
+    - prerequisite: {field: postoperative_targeted, equals: 'YES'}
+      dependents: [postoperative_targeted_regimen, postoperative_targeted_cycles]
+    - prerequisite: {field: palliative_systemic_treatment, equals: 'YES'}
+      dependents: [palliative_systemic_regimen]
+
+invalid_values:
+  reserved_metadata_tokens: [RECORDED, INFERRED, record, recorded]
+  rule: 来源类型或处理状态不得作为问卷答案。新结果入库前直接拒绝；历史结果没有有效候选时进入人工修改，有有效候选时自动排除。

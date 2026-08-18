@@ -7,7 +7,7 @@ Confidence = Literal["LOW", "MEDIUM", "HIGH", "VERIFIED"]
 
 
 class PatientCreate(BaseModel):
-    patient_code: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9._-]+$")
+    patient_code: str = Field(min_length=7, max_length=7, pattern=r"^\d{7}$")
 
 
 class RegionInput(BaseModel):
@@ -25,6 +25,8 @@ class SanitizationMetadata(BaseModel):
     crop: dict[str, float]
     redaction_count: int = Field(ge=0)
     client_reencoded: bool
+    enhancement_mode: Literal["ORIGINAL", "ENHANCED"] = "ORIGINAL"
+    enhancement_version: str | None = None
 
     @field_validator("client_reencoded")
     @classmethod
@@ -78,3 +80,11 @@ class DocumentTypeUpdate(BaseModel):
 class ModelImportRequest(BaseModel):
     filename: str
     model_name: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
+
+
+class OllamaProviderUpdate(BaseModel):
+    provider: Literal["DOCKER", "WINDOWS_HOST"]
+
+
+class OllamaModelUpdate(BaseModel):
+    model: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._:/-]+$")

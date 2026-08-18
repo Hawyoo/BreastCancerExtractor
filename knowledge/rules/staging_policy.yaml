@@ -1,4 +1,4 @@
-version: 0.2.0
+version: 0.3.0
 name: breast_tnm_recorded_then_inferred
 status: policy_only_ruleset_pending
 
@@ -6,20 +6,25 @@ priority:
   - If an explicit TNM component or stage group is recorded, preserve it as RECORDED.
   - If multiple recorded values conflict, preserve every observation and set REVIEW_REQUIRED.
   - Only missing components may be inferred; an inferred value never overwrites a recorded value.
+  - Postoperative histology and regional-node pathology use the surgical pathology report before discharge summaries or operative notes.
 
 contexts:
   clinical:
     prefixes: [c]
     evidence_window: pretreatment
+    evidence_sources: [history_and_physical_exam, pretreatment_imaging, primary_biopsy, regional_node_biopsy, distant_metastasis_evidence]
   pathological:
     prefixes: [p]
     allowed_when: definitive_surgery_without_neoadjuvant_treatment
+    primary_source: surgical_pathology_report
   post_neoadjuvant_clinical:
     prefixes: [yc]
     evidence_window: after_neoadjuvant_before_surgery
+    rule: retain_separately_and_never_overwrite_pretreatment_cTNM
   post_neoadjuvant_pathological:
     prefixes: [yp]
     allowed_when: surgery_after_neoadjuvant_treatment
+    primary_source: surgical_pathology_report
 
 inference:
   actor: llm_proposal_plus_deterministic_validation
@@ -36,6 +41,8 @@ inference:
     - treating_no_documented_metastasis_as_pathological_M0
     - mixing_clinical_and_pathological_evidence_without_context
     - mixing_p_and_yp_prefixes
+    - deriving_postoperative_histology_or_pathological_nodes_from_the_operative_note
+    - using_pM0_or_ypM0_without_permitted_pathological_metastasis_evidence
     - silently_resolving_conflicting_recorded_stages
 
 stage_group:
@@ -46,4 +53,3 @@ stage_group:
 review:
   always_required_for_inferred_tnm: true
   verified_only_by_human: true
-

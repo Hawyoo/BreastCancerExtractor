@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import shutil
 import uuid
 from pathlib import Path
 
@@ -13,16 +14,10 @@ from app.models import SanitizationMetadata
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
-async def save_sanitized_image(
-    patient_code: str,
+async def prepare_sanitized_image(
     upload: UploadFile,
     metadata: SanitizationMetadata,
 ) -> dict[str, str | int]:
-    """Persist only a browser-reencoded, sanitized image.
-
-    The browser sends a PNG created from a canvas after crop/redaction. The API has no
-    raw-image upload endpoint. Pillow decodes and re-encodes it once more, dropping metadata.
-    """
     max_bytes = settings.max_sanitized_image_mb * 1024 * 1024
     content = await upload.read(max_bytes + 1)
     if len(content) > max_bytes:
@@ -43,21 +38,48 @@ async def save_sanitized_image(
 
     clean_bytes = output.getvalue()
     digest = hashlib.sha256(clean_bytes).hexdigest()
-    document_id = uuid.uuid4().hex
-    patient_dir = settings.workspace_path / "patients" / patient_code / "sanitized"
-    patient_dir.mkdir(parents=True, exist_ok=True)
-    destination = patient_dir / f"{document_id}.png"
-    destination.write_bytes(clean_bytes)
-
-    relative_path = destination.relative_to(settings.workspace_path).as_posix()
     return {
-        "id": document_id,
-        "relative_path": relative_path,
+        "content": clean_bytes,
         "sha256": digest,
         "width": width,
         "height": height,
         "sanitization_json": json.dumps(metadata.model_dump(), ensure_ascii=False),
     }
+
+
+async def save_sanitized_image(
+    patient_code: str,
+    upload: UploadFile,
+    metadata: SanitizationMetadata,
+) -> dict[str, str | int]:
+    """Persist only a browser-reencoded, sanitized image."""
+    prepared = await prepare_sanitized_image(upload, metadata)
+    document_id = uuid.uuid4().hex
+    patient_dir = settings.workspace_path / "patients" / patient_code / "sanitized"
+    patient_dir.mkdir(parents=True, exist_ok=True)
+    destination = patient_dir / f"{document_id}.png"
+    destination.write_bytes(prepared.pop("content"))
+
+    relative_path = destination.relative_to(settings.workspace_path).as_posix()
+    return {
+        "id": document_id,
+        "relative_path": relative_path,
+        **prepared,
+    }
+
+
+async def replace_sanitized_image(
+    relative_path: str,
+    upload: UploadFile,
+    metadata: SanitizationMetadata,
+) -> dict[str, str | int]:
+    """Replace an existing sanitized image with a newly edited sanitized PNG."""
+    prepared = await prepare_sanitized_image(upload, metadata)
+    destination = safe_workspace_file(relative_path)
+    temporary = destination.with_suffix(".updating.png")
+    temporary.write_bytes(prepared.pop("content"))
+    temporary.replace(destination)
+    return prepared
 
 
 def safe_workspace_file(relative_path: str) -> Path:
@@ -68,6 +90,16 @@ def safe_workspace_file(relative_path: str) -> Path:
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return candidate
+
+
+def delete_patient_workspace(patient_code: str) -> None:
+    """Delete only the exact managed workspace directory for one patient."""
+    patients_root = (settings.workspace_path / "patients").resolve()
+    patient_dir = (patients_root / patient_code).resolve()
+    if patient_dir.parent != patients_root:
+        raise HTTPException(status_code=400, detail="Invalid patient workspace path")
+    if patient_dir.is_dir():
+        shutil.rmtree(patient_dir)
 
 
 def scan_gguf_files() -> list[dict[str, str | int]]:
@@ -86,4 +118,3 @@ def resolve_gguf(filename: str) -> Path:
     if candidate.parent != root or candidate.suffix.lower() != ".gguf" or not candidate.is_file():
         raise HTTPException(status_code=404, detail="GGUF file not found")
     return candidate
-

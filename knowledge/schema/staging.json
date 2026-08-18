@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "breast-cancer-extractor/staging/v0.2.0",
+  "$id": "breast-cancer-extractor/staging/v0.3.0",
   "title": "Breast cancer TNM assessment",
   "type": "object",
   "additionalProperties": false,
