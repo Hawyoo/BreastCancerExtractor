@@ -88,46 +88,6 @@ def _instance_id() -> str:
     return value
 
 
-def migrate_legacy_catalog() -> bool:
-    """Copy the old extractor.db to catalog.sqlite once, preserving rollback data."""
-    target = settings.database_path
-    if target.exists() or target.name != "catalog.sqlite":
-        return False
-    legacy = target.with_name("extractor.db")
-    if not legacy.is_file():
-        return False
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with _connection(legacy) as source, _connection(target) as destination:
-        source.backup(destination)
-    return True
-
-
-def migrate_legacy_workspace() -> int:
-    """Copy old workspace/patients into the self-contained patient store."""
-    source = settings.legacy_workspace_path / "patients"
-    target = patient_packages_root()
-    if not source.is_dir() or source.resolve() == target.resolve():
-        return 0
-    copied = 0
-    target.mkdir(parents=True, exist_ok=True)
-    for patient_dir in source.iterdir():
-        if not patient_dir.is_dir():
-            continue
-        destination = target / patient_dir.name
-        destination.mkdir(parents=True, exist_ok=True)
-        for item in patient_dir.rglob("*"):
-            if not item.is_file():
-                continue
-            relative = item.relative_to(patient_dir)
-            output = destination / relative
-            if output.exists():
-                continue
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, output)
-            copied += 1
-    return copied
-
-
 def _table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
     return [str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")]
 
@@ -189,7 +149,7 @@ def _copy_patient_images(rows: dict[str, list[dict[str, Any]]], package_dir: Pat
     sanitized.mkdir(parents=True, exist_ok=True)
     images = []
     for document in rows["documents"]:
-        source = (settings.workspace_path / str(document["relative_path"])).resolve()
+        source = (settings.database_path.parent / str(document["relative_path"])).resolve()
         if not source.is_file():
             continue
         destination = sanitized / source.name

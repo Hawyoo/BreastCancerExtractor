@@ -32,7 +32,7 @@ uv run --group native pyinstaller --noconfirm --clean BreastCancerExtractor.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
 $PortableRoot = Join-Path $ProjectRoot "dist\BreastCancerExtractor"
-@("database\patients", "workspace", "models\llm", "models\ollama", "local_knowledge", "logs", "runtime\ollama") |
+@("database\patients", "models\llm", "models\ollama", "local_knowledge", "logs", "runtime\ollama") |
     ForEach-Object { New-Item -ItemType Directory -Force -Path (Join-Path $PortableRoot $_) | Out-Null }
 if (Test-Path -LiteralPath $NativeCache) {
     Copy-Item -LiteralPath $NativeCache -Destination (Join-Path $PortableRoot "runtime") -Recurse -Force

@@ -1,5 +1,4 @@
 # Patient material and runtime state (never commit)
-workspace/
 database/
 patients/
 data/

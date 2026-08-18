@@ -25,6 +25,6 @@ runtime/ollama/ Ollama standalone runtime
 
 每名患者位于 `database/patients/<7位病案号>/`，目录内包含 `patient.sqlite`、`manifest.json` 和 `sanitized/`。跨设备复制患者目录后，在首页点击“扫描患者目录”完成登记或冲突处理。如果目标电脑已有同一病案号，先把外来目录改名为 `病案号-来源电脑`，不要覆盖本机目录。
 
-复制或升级程序前，请备份 `database/`、`models/` 和 `local_knowledge/`。旧版 `workspace/` 只作为首次迁移来源和回滚备份，不再保存新导入图片。
+复制或升级程序前，请备份 `database/`、`models/` 和 `local_knowledge/`。程序只使用 `database/catalog.sqlite` 与 `database/patients/` 数据结构。
 
 推荐模型为 Qwen3 8B，但程序不会把模型名称写死；可在 Web 模型管理中选择或导入其他本地模型。

@@ -18,8 +18,6 @@ class Settings(BaseSettings):
     ocr_url: str = "http://127.0.0.1:8001"
     default_llm_model: str = ""
     database_path: Path = Field(default_factory=lambda: portable_root() / "database" / "catalog.sqlite")
-    workspace_path: Path = Field(default_factory=lambda: portable_root() / "database")
-    legacy_workspace_path: Path = Field(default_factory=lambda: portable_root() / "workspace")
     model_import_path: Path = Field(default_factory=lambda: portable_root() / "models" / "llm")
     knowledge_path: Path = Field(default_factory=lambda: resource_root() / "knowledge")
     max_sanitized_image_mb: int = 25
@@ -27,8 +25,6 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def enforce_offline_llm_endpoint(self) -> "Settings":
         self.database_path = portable_path(self.database_path)
-        self.workspace_path = portable_path(self.workspace_path)
-        self.legacy_workspace_path = portable_path(self.legacy_workspace_path)
         self.model_import_path = portable_path(self.model_import_path)
         if not self.knowledge_path.is_absolute():
             self.knowledge_path = resource_root() / self.knowledge_path

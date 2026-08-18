@@ -9,7 +9,6 @@ from PIL import Image
 
 from app.config import settings
 from app.main import app
-from app.patient_store import migrate_legacy_catalog, migrate_legacy_workspace
 
 
 def make_image() -> bytes:
@@ -32,8 +31,6 @@ def metadata() -> str:
 
 def configure_machine(root: Path) -> None:
     settings.database_path = root / "database" / "catalog.sqlite"
-    settings.workspace_path = root / "database"
-    settings.legacy_workspace_path = root / "workspace"
     settings.model_import_path = root / "models" / "llm"
 
 
@@ -132,27 +129,3 @@ def test_same_patient_verified_conflict_requires_review(tmp_path):
         assert observation["status"] == "REVIEW_REQUIRED"
         assert {item["value"] for item in observation["candidate_values"]} == {"LEFT", "RIGHT"}
         assert client.get("/api/data-migration/scan").json()["conflicts"] == []
-
-
-def test_legacy_catalog_and_workspace_are_copied_without_deleting_source(tmp_path):
-    root = tmp_path / "portable"
-    database = root / "database"
-    database.mkdir(parents=True)
-    legacy_db = database / "extractor.db"
-    with sqlite3.connect(legacy_db) as connection:
-        connection.execute("CREATE TABLE marker(value TEXT)")
-        connection.execute("INSERT INTO marker VALUES('legacy')")
-    legacy_image = root / "workspace" / "patients" / "4567890" / "sanitized" / "image.png"
-    legacy_image.parent.mkdir(parents=True)
-    legacy_image.write_bytes(make_image())
-    settings.database_path = database / "catalog.sqlite"
-    settings.workspace_path = database
-    settings.legacy_workspace_path = root / "workspace"
-
-    assert migrate_legacy_catalog() is True
-    assert migrate_legacy_workspace() == 1
-    with sqlite3.connect(settings.database_path) as connection:
-        assert connection.execute("SELECT value FROM marker").fetchone()[0] == "legacy"
-    assert legacy_db.is_file()
-    assert legacy_image.is_file()
-    assert (database / "patients" / "4567890" / "sanitized" / "image.png").is_file()

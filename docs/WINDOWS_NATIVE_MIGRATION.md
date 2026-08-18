@@ -15,7 +15,7 @@
 原有 Docker 耦合主要来自：
 
 - `ollama`、`ocr`、`host.docker.internal` 等容器网络地址；
-- `/app/database`、`/app/workspace`、`/models/llm` 等容器绝对路径；
+- `/app/database`、`/models/llm` 等容器绝对路径；
 - Compose volume 和服务启动顺序；
 - OCR 与 Ollama 由 Compose 创建并管理。
 

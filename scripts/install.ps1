@@ -229,7 +229,7 @@ try {
     else {
         Write-Host ".env already exists and was preserved."
     }
-    @("database", "workspace", "models\llm", "local_knowledge") | ForEach-Object {
+    @("database\patients", "models\llm", "local_knowledge") | ForEach-Object {
         New-Item -ItemType Directory -Force -Path $_ | Out-Null
     }
 
