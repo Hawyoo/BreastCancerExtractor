@@ -2,20 +2,90 @@
 
 完全本地运行、带证据定位与人工审核留痕的乳腺癌科研病历结构化工具。
 
-> **推荐先看部署。** README 将“怎么运行”放在最前面；项目原理、隐私设计、知识库和开发说明统一放在后面。
->
 > 当前项目定位为**科研数据抽取工具**，不用于临床诊断或治疗决策。
 
 ---
 
-# 部署
+# Windows 极简版
+
+只想先把程序跑起来，按下面做即可。
+
+1. 在 GitHub 页面点击：
+
+```text
+Code → Download ZIP
+```
+
+2. 完整解压 ZIP，例如：
+
+```text
+D:\BreastCancerExtractor
+```
+
+3. 如果电脑还没有 `uv`，先安装 `uv`。
+
+4. 如果电脑还没有 Ollama，先安装 Ollama，然后执行：
+
+```powershell
+ollama pull qwen3:8b
+```
+
+5. 回到项目根目录，双击：
+
+```text
+build-portable.bat
+```
+
+6. 构建完成后进入：
+
+```text
+dist\BreastCancerExtractor\
+```
+
+7. 双击：
+
+```text
+BreastCancerExtractor.exe
+```
+
+8. 浏览器打开后即可使用：
+
+```text
+http://127.0.0.1:8765
+```
+
+以后再次使用，只需要进入：
+
+```text
+dist\BreastCancerExtractor\
+```
+
+双击：
+
+```text
+BreastCancerExtractor.exe
+```
+
+> 必须保留整个 `dist\BreastCancerExtractor\` 文件夹，不要只复制单独的 exe。
+
+需要换模型时，把 GGUF 放入：
+
+```text
+models\llm\
+```
+
+然后在软件的模型管理页面导入并选择即可。
+
+---
+
+# 部署详细说明
 
 目前支持两种运行方式：
 
 1. **Windows Native / Portable：推荐普通 Windows 用户使用**
 2. **Docker Compose：适合希望固定运行环境或继续使用现有 Docker 工作流的用户**
 
-两种方式都从 GitHub 仓库的 ZIP 开始。
+两种方式都从 GitHub 仓库 ZIP 开始。
 
 ---
 
@@ -31,7 +101,7 @@ Windows 版本使用 **PyInstaller onedir**。构建完成后，目标电脑运�
 Code → Download ZIP
 ```
 
-下载完成后**完整解压**，例如：
+下载完成后完整解压，例如：
 
 ```text
 D:\BreastCancerExtractor
@@ -41,28 +111,18 @@ D:\BreastCancerExtractor
 
 ### 2. 首次从源码构建 Windows Portable
 
-> 这一步只在“从 GitHub 源码 ZIP 自行构建 Portable”时需要。构建完成后的 Portable 文件夹可以直接复制到其他 Windows 电脑运行。
-
-构建电脑需要先准备：
+构建电脑需要：
 
 - 64 位 Windows；
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)；
+- `uv`；
 - 正常的显卡驱动；
-- 如希望生成的 Portable **自带 Ollama runtime**，建议构建电脑同时准备可用的 `ollama.exe`。构建脚本会优先从本机 PATH 中寻找并复制 Ollama；如果没有找到，仍可完成程序构建，但目标电脑需要使用已安装的 Ollama，或后续手工补充 `runtime/ollama/`。
+- 如希望 Portable 自带 Ollama runtime，构建电脑需要存在可用的 `ollama.exe`。
 
-然后在项目根目录双击：
+在项目根目录双击：
 
 ```text
 build-portable.bat
 ```
-
-脚本会自动：
-
-1. 同步 Windows Native / 打包依赖；
-2. 初始化并验证 PaddleOCR；
-3. 使用 PyInstaller 构建 `onedir`；
-4. 尝试打包 Ollama standalone runtime；
-5. 写入构建信息。
 
 构建结果位于：
 
@@ -78,78 +138,62 @@ dist\BreastCancerExtractor\
 dist\BreastCancerExtractor\
 ```
 
-然后双击：
+双击：
 
 ```text
 BreastCancerExtractor.exe
 ```
 
-必须保留并复制**整个 `BreastCancerExtractor` 文件夹**，不要只复制单独的 exe。
+必须复制和保留整个目录，不要只复制 exe。
 
-启动时程序会：
+程序会优先检查：
 
-1. 检查 `127.0.0.1:11434` 是否已有 Ollama；
-2. 如果已有 Ollama，直接使用；
-3. 如果没有运行中的 Ollama，则尝试启动：
+```text
+127.0.0.1:11434
+```
+
+如果 Windows 已有 Ollama，则直接使用；否则会尝试启动 Portable 中的：
 
 ```text
 runtime\ollama\ollama.exe
 ```
 
-4. 自动启动 Portable 内的本地 PaddleOCR；
-5. 启动本地 Web 服务；
-6. 浏览器打开：
+随后启动本地 OCR、本地 Web 服务并打开：
 
 ```text
 http://127.0.0.1:8765
 ```
 
-如果 Ollama 暂时不可用，程序本体仍应能够启动；图片整理、脱敏、ROI 等非 LLM 功能仍可使用。
+如果 Ollama 暂时不可用，图片整理、脱敏、ROI 等非 LLM 功能仍可使用。
 
-### 4. 安装 / 选择 LLM
+### 4. LLM
 
-推荐模型：
+推荐起始模型：
 
 ```text
 Qwen3 8B
 ```
 
-但程序**不会把模型名称写死**，以后可以更换其他 Ollama 兼容模型。
-
-#### 方法 A：使用本机已经安装的 Ollama 模型
-
-如果 Windows 上已经运行 Ollama，并已有模型，Portable 会优先连接该服务。
-
-可在 Ollama 中准备模型，例如：
+联网准备：
 
 ```powershell
 ollama pull qwen3:8b
 ollama list
 ```
 
-然后重新打开 BreastCancerExtractor，在 Web 端模型管理中选择相应模型。
-
-#### 方法 B：手工维护 GGUF，适合离线使用
-
-将合法获得的 `.gguf` 文件放入 Portable 目录中的：
+也可以把合法获得的 GGUF 放入：
 
 ```text
 models\llm\
 ```
 
-例如：
+然后在 Web 端模型管理中扫描、导入并选择模型。
 
-```text
-models\llm\qwen3-8b.gguf
-```
+不要直接修改 Ollama 内部模型目录。
 
-打开软件后，在 Web 端“模型管理”中扫描并导入 Ollama，再选择为当前模型。
+### 5. Windows Portable 数据目录
 
-不要直接修改 Ollama 自己的内部模型目录。
-
-### 5. Windows Portable 的数据放在哪里
-
-所有可写数据默认保存在 `BreastCancerExtractor.exe` 同级目录中，方便整体复制、备份和迁移：
+所有可写数据默认保存在 `BreastCancerExtractor.exe` 同级目录中：
 
 ```text
 BreastCancerExtractor\
@@ -171,25 +215,11 @@ BreastCancerExtractor\
 database\patients\<病案号>\
 ```
 
-每名患者目录内保存患者数据库、manifest 和**已经完成脱敏的图片**。
+每名患者目录保存患者数据库、manifest 和已经完成脱敏的图片。
 
-### 6. 日常使用
+### 6. Windows 更新 / 迁移
 
-以后只需要：
-
-```text
-打开 BreastCancerExtractor 文件夹
-↓
-双击 BreastCancerExtractor.exe
-↓
-浏览器自动打开
-```
-
-关闭启动窗口或按 `Ctrl+C` 会停止本次 Portable 主程序及由它启动的辅助服务。
-
-### 7. Windows Portable 更新 / 迁移
-
-更新程序前建议先备份：
+更新程序或换电脑前建议备份：
 
 ```text
 database\
@@ -197,9 +227,7 @@ models\
 local_knowledge\
 ```
 
-如果换电脑，可以复制整个 Portable 目录；也可以只迁移上述持久化目录到新的 Portable 版本。
-
-详细的 Windows Portable 说明见：
+详细说明：
 
 - [`docs/WINDOWS_PORTABLE.md`](docs/WINDOWS_PORTABLE.md)
 - [`docs/WINDOWS_NATIVE_MIGRATION.md`](docs/WINDOWS_NATIVE_MIGRATION.md)
@@ -207,8 +235,6 @@ local_knowledge\
 ---
 
 ## 二、Docker Compose
-
-Docker 版适合希望继续使用标准容器环境、固定依赖，或已经在 Docker 版上稳定工作的用户。
 
 ### 1. 下载项目 ZIP
 
@@ -224,27 +250,13 @@ Code → Download ZIP
 D:\BreastCancerExtractor
 ```
 
-不要直接在压缩包中运行，也不要把包含患者数据的项目目录放在会自动上传的网盘目录中。
-
-### 2. 最简单的安装方式：双击 `install.bat`
+### 2. 安装
 
 进入项目根目录，双击：
 
 ```text
 install.bat
 ```
-
-安装脚本会检查：
-
-- Windows 环境；
-- CPU 虚拟化；
-- WSL2；
-- Docker Desktop；
-- Docker Compose；
-- 本机配置；
-- 项目容器构建与启动状态。
-
-如果缺少 WSL2 或 Docker Desktop，脚本会在获得用户确认后尝试完成相应安装步骤。
 
 如果 Windows 要求重启：
 
@@ -254,97 +266,53 @@ install.bat
 再次双击 install.bat
 ```
 
-安装和容器健康检查完成后，浏览器会打开：
+安装和健康检查完成后打开：
 
 ```text
 http://127.0.0.1:8765
 ```
 
-> 自动安装器不会修改 BIOS/UEFI，不会绕过管理员授权，也不会自动替机构接受 Docker Desktop 的许可条款。
+### 3. 日常启动
 
-### 3. 手动准备 Docker 环境（仅在自动安装失败时看）
-
-建议环境：
-
-- 64 位 Windows 10 / 11；
-- BIOS/UEFI 已开启 CPU virtualization；
-- WSL2；
-- Docker Desktop；
-- Docker Compose。
-
-管理员 PowerShell 安装 WSL2：
-
-```powershell
-wsl --install
-```
-
-重启后可检查：
-
-```powershell
-wsl --update
-wsl --version
-wsl --status
-```
-
-Docker Desktop 安装完成并启动后，普通 PowerShell 检查：
-
-```powershell
-docker version
-docker compose version
-```
-
-本项目运行 Linux containers，建议使用 Docker Desktop 默认的 WSL2 backend。
-
-### 4. 本机配置
-
-如果 `install.bat` 已完成配置，可直接跳过本节。
-
-手工部署时，可以从示例配置复制：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-默认配置示例：
-
-```dotenv
-APP_PORT=8765
-OFFLINE_MODE=true
-OLLAMA_URL=http://ollama:11434
-OCR_URL=http://ocr:8001
-DEFAULT_LLM_MODEL=
-MAX_SANITIZED_IMAGE_MB=25
-```
-
-首次使用建议不要随意修改 Ollama / OCR 容器内部地址。
-
-### 5. 第一次启动
-
-确保 Docker Desktop 已运行，然后双击：
+以后使用：
 
 ```text
-start.bat
+启动 Docker Desktop
+↓
+双击 start.bat
+↓
+打开 http://127.0.0.1:8765
 ```
 
-也可以在项目目录执行：
+停止：
+
+```text
+stop.bat
+```
+
+如果希望同时退出 Docker Desktop、关闭 WSL2 并释放 `vmmem`：
+
+```text
+stop-all.bat
+```
+
+如果电脑上还有其他 WSL 任务，不要使用 `stop-all.bat`。
+
+### 4. 手动 Docker 启动
+
+如果需要手工操作：
 
 ```powershell
 docker compose up -d --build
 ```
 
-打开：
-
-```text
-http://127.0.0.1:8765
-```
-
-检查容器：
+检查：
 
 ```powershell
 docker compose ps
 ```
 
-正常应看到主要服务：
+正常应看到：
 
 ```text
 app
@@ -358,7 +326,7 @@ ollama
 http://127.0.0.1:8765/api/health
 ```
 
-如果页面打不开：
+日志：
 
 ```powershell
 docker compose logs --tail 200 app
@@ -366,103 +334,48 @@ docker compose logs --tail 200 ocr
 docker compose logs --tail 200 ollama
 ```
 
-### 6. Docker 版安装 LLM
+### 5. Docker 安装模型
 
-Docker 版默认使用 Compose 中独立的 Ollama 容器。
-
-推荐模型仍为：
-
-```text
-Qwen3 8B
-```
-
-#### 方法 A：联网下载
-
-在允许联网的准备阶段：
+联网准备：
 
 ```powershell
 docker compose exec ollama ollama pull qwen3:8b
 docker compose exec ollama ollama list
 ```
 
-下载完成后，可以在处理真实病历前断开互联网。
-
-#### 方法 B：导入本地 GGUF
-
-把 `.gguf` 放到：
+离线 GGUF：
 
 ```text
 models\llm\
 ```
 
-然后在 Web 端“模型管理”中扫描、导入并选择模型。
+然后在 Web 端模型管理中扫描、导入并选择模型。
 
-`models/llm/` 是用户自己维护的 GGUF 仓库；Ollama 导入后的运行模型保存在 Docker 命名卷 `ollama_models` 中，两者可能同时占用磁盘空间。
+Docker Ollama 的运行模型保存在命名卷 `ollama_models` 中。
 
-### 7. 可选：Docker 使用 Windows 宿主机 Ollama
+> 不要随意执行 `docker compose down -v`，`-v` 会删除 Ollama 模型卷。
 
-Web 端支持在以下模式间切换：
+### 6. Docker 更新
 
-- `Docker Ollama`：默认；
-- `Windows 宿主机 Ollama`：适合希望直接使用 Windows 原生 Ollama / GPU 的情况。
-
-使用宿主机模式前，需要确保 Windows Ollama 可以被 Docker Desktop 的 WSL 虚拟网络访问，并正确设置 Windows 防火墙。
-
-如果只是正常使用，优先保持默认的 `Docker Ollama`，不需要折腾这一项。
-
-### 8. Docker 日常启动与停止
-
-日常启动：
-
-```text
-启动 Docker Desktop
-↓
-双击 start.bat
-↓
-浏览器打开 http://127.0.0.1:8765
-```
-
-普通停止：
-
-```text
-stop.bat
-```
-
-或者：
-
-```powershell
-docker compose stop
-```
-
-如果希望连 Docker Desktop、WSL2 和 `vmmem` 一起停止，可以使用：
-
-```text
-stop-all.bat
-```
-
-`stop-all.bat` 会影响同机其他 WSL 任务；如果电脑上还有其他 WSL 工作，只使用普通 `stop.bat`。
-
-> **不要随意执行 `docker compose down -v`。** `-v` 会删除 Ollama 模型卷。
-
-### 9. Docker 更新
-
-更新代码前先备份持久化数据。
-
-更新源码后执行：
+更新源码后：
 
 ```powershell
 docker compose up -d --build
 ```
 
-程序升级、知识库升级和 LLM 模型升级彼此独立。不要因为更新程序而删除 `database/`、`models/` 或 `ollama_models`。
+不要因为更新程序而删除：
+
+```text
+database\
+models\
+ollama_models
+```
 
 ---
 
 # 基本使用流程
 
-部署完成后，两种运行方式使用的是同一套 Web 界面和核心业务逻辑。
-
-典型流程：
+两种部署方式使用同一套 Web 界面和核心业务逻辑。
 
 ```text
 新建患者
@@ -488,7 +401,7 @@ OCR 与 AI 在后台依次处理
 患者级数据预览与导出
 ```
 
-首次正式使用前，建议先使用**完全虚构、无真实身份信息的模拟病历图片**测试整个流程。
+首次正式使用前，建议先用完全虚构、无真实身份信息的模拟病历图片测试整个流程。
 
 ---
 
@@ -520,8 +433,6 @@ OCR 与 AI 在后台依次处理
 
 # 数据、备份与跨电脑迁移
 
-## 患者目录
-
 患者数据采用可移动目录：
 
 ```text
@@ -537,26 +448,17 @@ database\
 
 不同电脑处理不同患者时，可以在软件停止后复制完整患者目录到另一台电脑，再在首页使用“扫描患者目录”。
 
-如果目标电脑已经有同一病案号，不要直接覆盖；应按照软件提供的冲突处理流程决定保留、替换或合并审核。
+如果目标电脑已经有同一病案号，不要直接覆盖，应按照软件提供的冲突处理流程决定保留、替换或合并审核。
 
-## 建议备份
-
-至少备份：
+建议至少备份：
 
 ```text
 database\
 local_knowledge\
 models\llm\
-.env                  # Docker 使用时
 ```
 
-Windows Portable 建议直接备份：
-
-```text
-database\
-models\
-local_knowledge\
-```
+Docker 用户同时保留本机 `.env`。
 
 备份 SQLite 前最好先停止程序，避免复制正在写入的数据库。
 
@@ -569,8 +471,6 @@ local_knowledge\
 本项目最重要的边界是：
 
 > **未经脱敏的原始图片不作为患者长期数据保存，也不发送给后端 OCR / LLM。**
-
-处理流程：
 
 ```text
 用户本地原图
@@ -590,19 +490,17 @@ OCR
 人工审核
 ```
 
-原始文件名也不自动写入患者数据库，避免姓名或住院号从文件名泄露。
+原始文件名不自动写入患者数据库，避免姓名或住院号从文件名泄露。
 
-实心遮盖是对输出像素的真实修改，不是单纯在网页上覆盖一个可撤销的视觉图层。
+实心遮盖会真实修改输出像素，不是单纯的网页视觉覆盖。
 
-需要注意：浏览器崩溃转储、系统交换文件、恶意软件、屏幕录制等属于操作系统层风险，无法仅由本 Web 应用绝对消除。医院环境仍建议配合受控账户、磁盘加密、终端安全策略和断网使用。
+医院环境仍建议配合受控账户、磁盘加密、终端安全策略和断网使用。
 
-`OFFLINE_MODE=true` 时，项目按照本地 / 容器内部通信模式工作。当前代码不依赖 CDN、第三方字体、遥测或外部错误上报。
+当前代码不依赖 CDN、第三方字体、遥测或外部错误上报。
 
 ---
 
 # AI、OCR 与人工审核
-
-项目原则：
 
 ```text
 OCR 负责认字
@@ -614,7 +512,7 @@ LLM 负责理解和结构化
 人工负责最终确认
 ```
 
-AI 处理后的字段可以人工修改；修改前后的值会分别保留。
+AI 处理后的字段可以人工修改，修改前后的值分别保留。
 
 只有人工确认后的字段进入：
 
@@ -636,7 +534,7 @@ AI 不会自行把结果标记为人工已确认。
 Qwen3 8B
 ```
 
-模型并非固定依赖。
+模型不是固定依赖。
 
 用户可以：
 
@@ -651,19 +549,19 @@ Qwen3 8B
 
 # 知识库
 
-公开知识库位于：
+公开知识库：
 
 ```text
 knowledge\
 ```
 
-本地授权、机构内部或不适合公开提交的资料放入：
+本地授权、机构内部或不适合公开提交的资料：
 
 ```text
 local_knowledge\
 ```
 
-字段定义及需要根据医院实际口径补充的内容见：
+字段定义及需要根据医院实际口径补充的内容：
 
 ```text
 knowledge/manual/知识库手册.md
@@ -675,45 +573,29 @@ knowledge/manual/知识库手册.md
 knowledge/references/sources.yaml
 ```
 
-知识库主要参考乳腺癌相关的中国临床指南、AJCC、WHO/IARC、CAP、ASCO，以及 NCIt / LOINC / RxNorm 等标准术语体系。
+主要参考乳腺癌相关的中国临床指南、AJCC、WHO/IARC、CAP、ASCO，以及 NCIt / LOINC / RxNorm 等标准术语体系。
 
-原则是：
+原则：
 
 - 病历明确记录优先于模型推断；
-- 标准用于结构化、校验和辅助推断，不用于覆盖原始病历；
+- 标准用于结构化、校验和辅助推断，不覆盖原始病历；
 - 受版权或许可限制的全文内容不直接提交到公开仓库；
-- 本地授权资料与公开仓库知识库分离。
-
-<details>
-<summary><strong>展开：主要知识来源</strong></summary>
-
-- 国家卫生健康委员会《乳腺癌诊疗指南》；
-- 中国抗癌协会乳腺癌诊治指南与规范；
-- AJCC Cancer Staging System；
-- WHO Classification of Tumours — Breast Tumours；
-- CAP Breast Cancer Protocols；
-- ASCO / CAP 乳腺癌生物标志物相关指南；
-- NCI / NCIt；
-- LOINC、RxNorm、ATC/DDD 等术语资源。
-
-具体版本、用途、访问方式和许可边界以 `knowledge/references/sources.yaml` 为准。
-
-</details>
+- 本地授权资料与公开知识库分离。
 
 ---
 
 # 医院完全离线版
 
-当前仓库已经具备本地运行基础，但**尚未正式发布可直接交付医院的完整离线安装包**。
+当前仓库具备本地运行基础，但尚未正式发布可直接交付医院的完整离线安装包。
 
-不要认为“把 GitHub ZIP 拷贝到断网电脑”就等于完成医院离线部署，因为目标电脑还可能缺少：
+医院离线发行还需要准备和验证：
 
-- Windows / WSL / Docker 运行环境（Docker 版）；
-- Ollama runtime（Portable 未内置时）；
-- OCR 模型缓存；
-- LLM 模型权重。
-
-计划中的医院离线发行将额外准备所需运行时、镜像 / 模型及离线说明，并在真正无缓存、无互联网的电脑上完成验收后再发布。
+- 所需 Windows / Docker 运行环境（Docker 版）；
+- Ollama runtime；
+- OCR 模型；
+- LLM 模型权重；
+- 离线安装说明；
+- 真正无缓存、无互联网电脑上的完整验收。
 
 真实患者资料永远不属于任何发布包。
 
@@ -759,7 +641,7 @@ dist\BreastCancerExtractor\
 
 `.gitignore` 已排除患者数据、数据库、模型、日志、GGUF、离线镜像和本机配置等内容。
 
-提交前仍建议检查：
+提交前建议检查：
 
 ```powershell
 git status --short
