@@ -18,7 +18,7 @@ COPY app ./app
 COPY knowledge ./knowledge
 
 RUN addgroup --system app && adduser --system --ingroup app app \
-    && mkdir -p /runtime/database /runtime/workspace /models/llm \
+    && mkdir -p /runtime/database /models/llm \
     && chown -R app:app /runtime /models/llm
 
 USER app

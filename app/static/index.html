@@ -39,6 +39,7 @@
             <h3>患者</h3>
             <div class="patient-browser-actions">
               <button id="open-data-preview" class="tool" type="button">数据预览</button>
+              <button id="scan-patient-packages" class="tool" type="button">扫描患者目录</button>
               <button id="refresh-patients" class="icon-button" title="刷新">↻</button>
             </div>
           </div>
@@ -47,6 +48,14 @@
             <button type="submit">新建</button>
           </form>
           <div id="patient-list" class="patient-list"></div>
+          <section id="patient-package-panel" class="patient-package-panel" hidden>
+            <div class="panel-title">
+              <h4>患者目录迁移</h4>
+              <button id="close-patient-packages" class="icon-button" type="button" title="关闭">×</button>
+            </div>
+            <p>将完整患者文件夹放入 <code>database/patients/</code>，然后扫描。相同病案号不会被静默覆盖。</p>
+            <div id="patient-package-results" class="patient-package-results"></div>
+          </section>
         </div>
 
         <div id="selected-patient-summary" class="selected-patient-summary" hidden>

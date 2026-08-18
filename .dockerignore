@@ -1,7 +1,6 @@
 .git
 .github
 .venv
-workspace
 database
 models
 logs
@@ -10,4 +9,3 @@ tests
 *.sqlite
 *.gguf
 *.tar
-

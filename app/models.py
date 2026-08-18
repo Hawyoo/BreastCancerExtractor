@@ -88,3 +88,8 @@ class OllamaProviderUpdate(BaseModel):
 
 class OllamaModelUpdate(BaseModel):
     model: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._:/-]+$")
+
+
+class PatientPackageImport(BaseModel):
+    package_name: str = Field(min_length=1, max_length=160, pattern=r"^[^/\\]+$")
+    action: Literal["IMPORT_NEW", "KEEP_LOCAL", "USE_EXTERNAL", "MERGE"]

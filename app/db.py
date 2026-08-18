@@ -114,6 +114,51 @@ CREATE TABLE IF NOT EXISTS model_runs (
     finished_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS patient_sync_state (
+    patient_id INTEGER PRIMARY KEY REFERENCES patients(id) ON DELETE CASCADE,
+    dirty INTEGER NOT NULL DEFAULT 1,
+    last_synced_at TEXT
+);
+
+CREATE TRIGGER IF NOT EXISTS sync_patient_insert AFTER INSERT ON patients BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_patient_update AFTER UPDATE ON patients BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_document_insert AFTER INSERT ON documents BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.patient_id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_document_update AFTER UPDATE ON documents BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.patient_id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_observation_insert AFTER INSERT ON observations BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.patient_id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_observation_update AFTER UPDATE ON observations BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.patient_id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_audit_insert AFTER INSERT ON audit_log BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty) VALUES(NEW.patient_id,1)
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_ocr_insert AFTER INSERT ON ocr_results BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty)
+    SELECT patient_id,1 FROM documents WHERE id=NEW.document_id
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+CREATE TRIGGER IF NOT EXISTS sync_ocr_update AFTER UPDATE ON ocr_results BEGIN
+    INSERT INTO patient_sync_state(patient_id,dirty)
+    SELECT patient_id,1 FROM documents WHERE id=NEW.document_id
+    ON CONFLICT(patient_id) DO UPDATE SET dirty=1;
+END;
+
 CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_id);
 CREATE INDEX IF NOT EXISTS idx_regions_document ON regions(document_id);
 CREATE INDEX IF NOT EXISTS idx_observations_patient ON observations(patient_id);
@@ -126,6 +171,8 @@ def init_db(path: Path | None = None) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as connection:
         connection.executescript(SCHEMA)
+        connection.execute("DROP TRIGGER IF EXISTS sync_document_delete")
+        connection.execute("DROP TRIGGER IF EXISTS sync_observation_delete")
         existing = {row[1] for row in connection.execute("PRAGMA table_info(observations)")}
         migrations = {
             "source_mode": "ALTER TABLE observations ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'RECORDED'",
@@ -135,6 +182,10 @@ def init_db(path: Path | None = None) -> None:
         for column, statement in migrations.items():
             if column not in existing:
                 connection.execute(statement)
+        connection.execute(
+            """INSERT INTO patient_sync_state(patient_id,dirty)
+               SELECT id,1 FROM patients WHERE id NOT IN (SELECT patient_id FROM patient_sync_state)"""
+        )
 
 
 @contextmanager

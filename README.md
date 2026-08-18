@@ -57,7 +57,7 @@ Portable 会自动启动随包提供的 PaddleOCR；先连接 `127.0.0.1:11434` 
   ↓ Canvas 重新编码 PNG（删除 EXIF）
 本地 FastAPI
   ↓ 再次解码/编码
-workspace/patients/<patient_code>/sanitized/<uuid>.png
+database/patients/<patient_code>/sanitized/<uuid>.png
 ```
 
 注意：浏览器崩溃转储、操作系统交换文件、屏幕录制等属于操作系统层面的风险，无法仅靠 Web 应用绝对消除。医院部署仍应配合加密磁盘、受控账户和禁用外网策略。
@@ -150,7 +150,7 @@ docker compose version
 2. 下载后完整解压，不要直接在压缩包预览窗口运行；
 3. 建议解压到 `D:\BreastCancerExtractor` 等固定目录。
 
-不要把项目放在会自动上传云端的 OneDrive、网盘或公共共享目录中。代码目录可以迁移，但 `database/` 和 `workspace/` 建立后不可随意删除。
+不要把项目放在会自动上传云端的 OneDrive、网盘或公共共享目录中。代码目录可以迁移，但包含患者数据的 `database/` 不可随意删除。
 
 ### 5. 创建本机配置
 
@@ -312,7 +312,7 @@ Ollama 导入后的运行模型保存在 Docker 命名卷 `ollama_models`；`mod
 5. 框选一个或多个 ROI；
 6. 点击“确认脱敏并保存”，该张原图被释放并自动打开下一张；
 7. OCR 和 AI 自动进入页面下方后台队列，可继续处理后续图片，无需等待；
-8. 检查项目目录，未经脱敏原图不应出现在 `workspace/`；
+8. 检查项目目录，未经脱敏原图不应出现在 `database/patients/`；
 9. 确认上述流程无误后，再制定真实病历的受控测试方案。
 
 保存脱敏图后，系统会自动顺序执行 OCR 和 AI 抽取。若某一步失败，已保存的脱敏图片以及此前已完成的 OCR 结果不会丢失。AI结果进入字段审核区，人工可修改并确认。首页“数据预览”可按问卷顺序查看全部患者宽表，并可切换“全部当前结果”或“仅人工已确认”，导出带 UTF-8 BOM 的 Excel 兼容 CSV；原生 XLSX 导出尚未完成。
@@ -349,21 +349,35 @@ stop-all.bat
 docker compose up -d --build
 ```
 
-程序升级、知识库升级和模型升级是三件独立的事情。不要因为更新代码而删除 `database/`、`workspace/`、`models/` 或 Docker 的 `ollama_models` 卷。
+程序升级、知识库升级和模型升级是三件独立的事情。不要因为更新代码而删除 `database/`、`models/` 或 Docker 的 `ollama_models` 卷。
 
 ### 11. 数据备份与迁移
 
 至少备份：
 
 ```text
-database/        SQLite 数据库、人工修改和审计记录
-workspace/       已确认脱敏的图片、ROI 和运行文件
+database/        可重建目录库，以及每名患者完整的 patient.sqlite、脱敏图片和审核记录
 local_knowledge/ 本机授权资料和医院内部字典
 models/llm/      用户保留的原始 GGUF（如需）
 .env             本机配置
 ```
 
 备份前先运行 `stop.bat`，避免复制正在写入的 SQLite 文件。未经安全评估，不要把备份放到普通网盘。Ollama 已导入模型位于 Docker 卷中；如果原始 GGUF 仍在 `models/llm/`，新电脑可重新导入，否则需要另行导出/备份 Docker 卷。
+
+患者数据采用可移动目录：
+
+```text
+database/
+├─ catalog.sqlite
+├─ instance.json
+└─ patients/
+   └─ 1234567/
+      ├─ patient.sqlite
+      ├─ manifest.json
+      └─ sanitized/
+```
+
+不同电脑处理不同患者时，停止软件后复制完整病案号目录到主电脑的 `database/patients/`，再在首页点击“扫描患者目录”。如果目标电脑已经有同一病案号，复制前将外来目录改名为 `病案号-来源电脑`（不要覆盖本机同名目录）；系统读取 `manifest.json` 中的真实病案号，并提供“保留本机”“使用外部”“合并并审核冲突”。处理后的外来目录会保留并标记为已处理，不会反复出现在扫描列表，也不会静默覆盖两边的人工确认值。
 
 ### 12. 离线版安装说明
 
@@ -392,7 +406,7 @@ BreastCancerExtractor-Offline-<version>/
 若要卸载应用但保留数据：
 
 1. 执行 `stop.bat`；
-2. 备份 `database/`、`workspace/`、`local_knowledge/`、`.env` 和需要保留的 GGUF；
+2. 备份 `database/`、`local_knowledge/`、`.env` 和需要保留的 GGUF；
 3. 执行 `docker compose down`；
 4. 可以删除代码目录，但不要删除尚未备份的持久化数据。
 
@@ -402,7 +416,7 @@ BreastCancerExtractor-Offline-<version>/
 docker compose down -v
 ```
 
-这是破坏性操作：`-v` 会删除本项目的 Ollama 模型卷，通常无法恢复；项目目录中的 `database/` 和 `workspace/` 是 bind mount，仍需在确认备份和目标路径无误后由用户单独删除。本项目不会自动删除患者数据。
+这是破坏性操作：`-v` 会删除本项目的 Ollama 模型卷，通常无法恢复；项目目录中的 `database/` 是 bind mount，仍需在确认备份和目标路径无误后由用户单独删除。本项目不会自动删除患者数据。
 
 只有在该电脑不再运行任何其他容器应用时，才考虑通过 Windows“设置 → 应用”卸载 Docker Desktop；卸载 Docker Desktop 可能影响同机其他 Docker 项目。WSL 也可能被其他软件使用，不应为了卸载本项目而直接删除 WSL。
 
@@ -507,7 +521,7 @@ uv run ruff check .
 
 ## Git 安全
 
-`.gitignore` 已排除 `workspace/`、`database/`、`models/`、日志、数据库、GGUF 和离线镜像。提交前仍应运行：
+`.gitignore` 已排除 `database/`、`models/`、日志、数据库、GGUF 和离线镜像。提交前仍应运行：
 
 ```powershell
 git status --short

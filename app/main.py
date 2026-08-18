@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import logging
 import re
 import time
 import uuid
@@ -24,6 +25,7 @@ from app.models import (
     ObservationVerify,
     OllamaModelUpdate,
     OllamaProviderUpdate,
+    PatientPackageImport,
     PatientCreate,
     RegionInput,
     SanitizationMetadata,
@@ -366,20 +368,27 @@ def build_data_preview(*, verified_only: bool = False) -> dict[str, object]:
         "verified_only": verified_only,
     }
 from app.storage import (
-    delete_patient_workspace,
     replace_sanitized_image,
     resolve_gguf,
-    safe_workspace_file,
+    safe_data_file,
     save_sanitized_image,
     scan_gguf_files,
+)
+from app.patient_store import (
+    delete_patient_package,
+    import_patient_package,
+    scan_patient_packages,
+    sync_dirty_patient_packages,
+    sync_missing_patient_packages,
 )
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    settings.workspace_path.mkdir(parents=True, exist_ok=True)
+    settings.database_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_import_path.mkdir(parents=True, exist_ok=True)
+    sync_missing_patient_packages()
     yield
 
 
@@ -388,6 +397,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 _EXTRACTION_PROGRESS: dict[str, dict[str, object]] = {}
 _OCR_IN_PROGRESS: set[str] = set()
 STAGING_FIELDS = {"clinical_stage", "pathological_stage"}
+LOGGER = logging.getLogger(__name__)
 
 
 def update_extraction_progress(document_id: str, **values: object) -> None:
@@ -400,6 +410,13 @@ def update_extraction_progress(document_id: str, **values: object) -> None:
 @app.middleware("http")
 async def privacy_headers(request, call_next):
     response = await call_next(request)
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400:
+        try:
+            synced = sync_dirty_patient_packages()
+            response.headers["X-Patient-Packages-Synced"] = str(len(synced))
+        except Exception:
+            LOGGER.exception("Patient package synchronization is pending")
+            response.headers["X-Patient-Packages-Synced"] = "pending"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; img-src 'self' blob: data:; style-src 'self'; "
         "script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"
@@ -446,6 +463,19 @@ def get_patients() -> list[dict[str, object]]:
 @app.get("/api/data-preview")
 def data_preview(verified_only: bool = False) -> dict[str, object]:
     return build_data_preview(verified_only=verified_only)
+
+
+@app.get("/api/data-migration/scan")
+def scan_data_migration() -> dict[str, list[dict[str, object]]]:
+    return scan_patient_packages()
+
+
+@app.post("/api/data-migration/import")
+def import_data_migration(payload: PatientPackageImport) -> dict[str, object]:
+    try:
+        return import_patient_package(payload.package_name, payload.action)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/data-preview.csv")
@@ -506,7 +536,7 @@ def delete_patient(patient_id: int) -> None:
             for row in db.execute("SELECT id FROM documents WHERE patient_id=?", (patient_id,)).fetchall()
         ]
     # Remove managed files first; if this fails, the database is left intact.
-    delete_patient_workspace(patient_code)
+    delete_patient_package(patient_code)
     with connect() as db:
         db.execute("DELETE FROM model_runs WHERE patient_id=?", (patient_id,))
         db.execute("DELETE FROM patients WHERE id=?", (patient_id,))
@@ -736,7 +766,7 @@ def get_document_image(document_id: str) -> FileResponse:
         row = db.execute("SELECT relative_path FROM documents WHERE id=?", (document_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Document not found")
-    return FileResponse(safe_workspace_file(row["relative_path"]), media_type="image/png")
+    return FileResponse(safe_data_file(row["relative_path"]), media_type="image/png")
 
 
 def require_document(document_id: str) -> dict[str, object]:
@@ -750,7 +780,7 @@ def require_document(document_id: str) -> dict[str, object]:
 @app.delete("/api/documents/{document_id}", status_code=204)
 def delete_document(document_id: str) -> None:
     document = require_document(document_id)
-    image_path = safe_workspace_file(str(document["relative_path"]))
+    image_path = safe_data_file(str(document["relative_path"]))
     image_path.unlink(missing_ok=True)
     now = utc_now()
     patient_id = int(document["patient_id"])
@@ -795,7 +825,7 @@ async def process_document_ocr(document_id: str) -> dict[str, object]:
         raise HTTPException(status_code=409, detail="该图片正在进行OCR")
     _OCR_IN_PROGRESS.add(document_id)
     try:
-        result = await recognize_image(safe_workspace_file(str(document["relative_path"])))
+        result = await recognize_image(safe_data_file(str(document["relative_path"])))
     finally:
         _OCR_IN_PROGRESS.discard(document_id)
     now = utc_now()

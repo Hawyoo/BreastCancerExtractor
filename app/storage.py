@@ -1,7 +1,6 @@
 import hashlib
 import io
 import json
-import shutil
 import uuid
 from pathlib import Path
 
@@ -55,12 +54,13 @@ async def save_sanitized_image(
     """Persist only a browser-reencoded, sanitized image."""
     prepared = await prepare_sanitized_image(upload, metadata)
     document_id = uuid.uuid4().hex
-    patient_dir = settings.workspace_path / "patients" / patient_code / "sanitized"
+    data_root = settings.database_path.parent
+    patient_dir = data_root / "patients" / patient_code / "sanitized"
     patient_dir.mkdir(parents=True, exist_ok=True)
     destination = patient_dir / f"{document_id}.png"
     destination.write_bytes(prepared.pop("content"))
 
-    relative_path = destination.relative_to(settings.workspace_path).as_posix()
+    relative_path = destination.relative_to(data_root).as_posix()
     return {
         "id": document_id,
         "relative_path": relative_path,
@@ -75,33 +75,21 @@ async def replace_sanitized_image(
 ) -> dict[str, str | int]:
     """Replace an existing sanitized image with a newly edited sanitized PNG."""
     prepared = await prepare_sanitized_image(upload, metadata)
-    destination = safe_workspace_file(relative_path)
+    destination = safe_data_file(relative_path)
     temporary = destination.with_suffix(".updating.png")
     temporary.write_bytes(prepared.pop("content"))
     temporary.replace(destination)
     return prepared
 
 
-def safe_workspace_file(relative_path: str) -> Path:
-    root = settings.workspace_path.resolve()
+def safe_data_file(relative_path: str) -> Path:
+    root = settings.database_path.parent.resolve()
     candidate = (root / relative_path).resolve()
     if root not in candidate.parents:
         raise HTTPException(status_code=400, detail="Invalid file path")
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return candidate
-
-
-def delete_patient_workspace(patient_code: str) -> None:
-    """Delete only the exact managed workspace directory for one patient."""
-    patients_root = (settings.workspace_path / "patients").resolve()
-    patient_dir = (patients_root / patient_code).resolve()
-    if patient_dir.parent != patients_root:
-        raise HTTPException(status_code=400, detail="Invalid patient workspace path")
-    if patient_dir.is_dir():
-        shutil.rmtree(patient_dir)
-
-
 def scan_gguf_files() -> list[dict[str, str | int]]:
     root = settings.model_import_path
     root.mkdir(parents=True, exist_ok=True)
