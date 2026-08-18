@@ -30,6 +30,28 @@ def test_daily_start_reuses_existing_docker_images():
     assert "compose up -d" in starter
 
 
+def test_windows_native_portable_build_is_onedir_and_reuses_core_app():
+    root = Path(__file__).resolve().parents[1]
+    specification = (root / "BreastCancerExtractor.spec").read_text(encoding="utf-8")
+    launcher = (root / "app/native_launcher.py").read_text(encoding="utf-8")
+    builder = (root / "scripts/build-portable.ps1").read_text(encoding="utf-8")
+
+    assert "COLLECT(" in specification
+    assert 'name="BreastCancerExtractor"' in specification
+    assert 'uvicorn.run("app.main:app"' in launcher
+    assert 'uvicorn.run("ocr.service:app"' in launcher
+    assert "pyinstaller --noconfirm --clean BreastCancerExtractor.spec" in builder
+    assert "runtime\\ollama\\ollama.exe" in builder
+
+
+def test_docker_runtime_mode_remains_explicit():
+    root = Path(__file__).resolve().parents[1]
+    compose = (root / "compose.yaml").read_text(encoding="utf-8")
+    assert "RUNTIME_MODE: docker" in compose
+    assert "http://ollama:11434" in compose
+    assert "http://ocr:8001" in compose
+
+
 def test_readme_leads_with_one_click_install():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "最简单的安装方式：双击一个文件" in readme

@@ -42,9 +42,9 @@ from app.ollama import (
     supports_structured_extraction,
 )
 from app.runtime_config import (
-    OLLAMA_PROVIDER_ENDPOINTS,
     get_ollama_provider,
     get_selected_ollama_model,
+    ollama_provider_endpoints,
     save_ollama_provider,
     save_selected_ollama_model,
 )
@@ -1218,7 +1218,7 @@ async def get_ollama_provider_setting() -> dict[str, object]:
 
 @app.post("/api/settings/ollama-provider")
 async def update_ollama_provider_setting(payload: OllamaProviderUpdate) -> dict[str, object]:
-    endpoint = OLLAMA_PROVIDER_ENDPOINTS[payload.provider]
+    endpoint = ollama_provider_endpoints()[payload.provider]
     health = await ollama_health(endpoint)
     if not health["available"]:
         description = (

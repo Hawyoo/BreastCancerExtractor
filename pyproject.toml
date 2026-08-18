@@ -20,6 +20,12 @@ dev = [
   "pytest-cov>=6.2,<8",
   "ruff>=0.12,<1",
 ]
+native = [
+  "numpy>=1.26,<3",
+  "paddleocr>=3.5,<4",
+  "paddlepaddle==3.2.0",
+  "pyinstaller>=6.15,<7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

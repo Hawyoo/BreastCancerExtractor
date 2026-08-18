@@ -4,10 +4,19 @@ from urllib.parse import urlparse
 
 from app.config import settings
 
-OLLAMA_PROVIDER_ENDPOINTS = {
-    "DOCKER": "http://ollama:11434",
-    "WINDOWS_HOST": "http://host.docker.internal:11434",
-}
+
+def ollama_provider_endpoints() -> dict[str, str]:
+    native_url = settings.ollama_url
+    if urlparse(native_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
+        native_url = "http://127.0.0.1:11434"
+    return {
+        "DOCKER": "http://ollama:11434",
+        "WINDOWS_HOST": (
+            "http://host.docker.internal:11434"
+            if settings.runtime_mode == "docker"
+            else native_url
+        ),
+    }
 
 
 def runtime_config_path() -> Path:
@@ -34,26 +43,30 @@ def save_runtime_config(payload: dict[str, object]) -> None:
 
 
 def default_ollama_provider() -> str:
+    if settings.runtime_mode == "windows_native":
+        return "WINDOWS_HOST"
     hostname = urlparse(settings.ollama_url).hostname
     return "WINDOWS_HOST" if hostname == "host.docker.internal" else "DOCKER"
 
 
 def get_ollama_provider() -> dict[str, str]:
+    endpoints = ollama_provider_endpoints()
     provider = load_runtime_config().get("ollama_provider")
-    if provider in OLLAMA_PROVIDER_ENDPOINTS:
-        return {"provider": str(provider), "endpoint": OLLAMA_PROVIDER_ENDPOINTS[str(provider)]}
+    if provider in endpoints:
+        return {"provider": str(provider), "endpoint": endpoints[str(provider)]}
     provider = default_ollama_provider()
-    endpoint = settings.ollama_url if provider == "DOCKER" else OLLAMA_PROVIDER_ENDPOINTS[provider]
+    endpoint = settings.ollama_url if provider == "DOCKER" else endpoints[provider]
     return {"provider": provider, "endpoint": endpoint}
 
 
 def save_ollama_provider(provider: str) -> dict[str, str]:
-    if provider not in OLLAMA_PROVIDER_ENDPOINTS:
+    endpoints = ollama_provider_endpoints()
+    if provider not in endpoints:
         raise ValueError("Unsupported Ollama provider")
     payload = load_runtime_config()
     payload["ollama_provider"] = provider
     save_runtime_config(payload)
-    return {"provider": provider, "endpoint": OLLAMA_PROVIDER_ENDPOINTS[provider]}
+    return {"provider": provider, "endpoint": endpoints[provider]}
 
 
 def get_selected_ollama_model(provider: str | None = None) -> str:
@@ -68,7 +81,7 @@ def get_selected_ollama_model(provider: str | None = None) -> str:
 
 def save_selected_ollama_model(model_name: str, provider: str | None = None) -> dict[str, str]:
     selected_provider = provider or get_ollama_provider()["provider"]
-    if selected_provider not in OLLAMA_PROVIDER_ENDPOINTS:
+    if selected_provider not in ollama_provider_endpoints():
         raise ValueError("Unsupported Ollama provider")
     payload = load_runtime_config()
     models = payload.get("ollama_models")

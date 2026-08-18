@@ -21,6 +21,7 @@ outputs/
 # Python
 .venv/
 .uv-cache/
+.native-cache/
 .docker-cli/
 __pycache__/
 *.py[cod]
@@ -30,6 +31,7 @@ __pycache__/
 htmlcov/
 dist/
 build/
+*.spec.bak
 *.egg-info/
 
 # Editors / OS
