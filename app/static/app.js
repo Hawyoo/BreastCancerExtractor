@@ -989,7 +989,14 @@ function renderFieldReview() {
   $("#review-ai-value").value=observation.ai_value??"";
   const basisBox=$("#review-inference-basis"),basis=Array.isArray(observation.inference_basis)?observation.inference_basis:[];
   basisBox.hidden=!basis.length;
-  basisBox.innerHTML=basis.length?`<strong>TNM评估依据</strong>${basis.map(item=>`<div><b>${escapeHtml(item.component||"证据")}</b><span>${escapeHtml(item.fact||"")}</span><small>${escapeHtml(item.source_text||"")}</small></div>`).join("")}`:"";
+  basisBox.innerHTML=basis.length?`<strong>依据</strong>${basis.map(item=>`
+    <div class="review-basis-item">
+      <div class="review-basis-summary">
+        <b>${escapeHtml(item.component||"依据")}</b>
+        <span>${escapeHtml(item.fact||"")}</span>
+      </div>
+      ${item.source_text?`<small>${escapeHtml(item.source_text)}</small>`:""}
+    </div>`).join("")}`:"";
   $("#review-current-value").value=observation.current_value??"";
   renderReviewChoices(observation);
   $("#review-note").value="";

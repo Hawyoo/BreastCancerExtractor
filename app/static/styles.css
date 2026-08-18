@@ -133,12 +133,14 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
 .review-choice-option:hover { border-color: var(--green); }
 .review-choice-option.active { color: #fff; border-color: var(--green); background: var(--green); }
 .review-field-meta { padding: 8px; color: var(--muted); border-radius: 8px; background: var(--paper); font-size: 12px; overflow-wrap: anywhere; }
-.review-inference-basis { display: grid; gap: 7px; padding: 9px; border: 1px solid color-mix(in srgb,var(--green) 32%,var(--line)); border-radius: 8px; background: var(--paper); font-size: 12px; }
+.review-inference-basis { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid color-mix(in srgb,var(--green) 32%,var(--line)); border-radius: 8px; background: var(--paper); font-size: 12px; }
 .review-inference-basis[hidden] { display: none; }
 .review-inference-basis > strong { color: var(--green-dark); }
-.review-inference-basis div { display: grid; grid-template-columns: 30px 1fr; gap: 3px 7px; }
-.review-inference-basis b { color: var(--green); }
-.review-inference-basis small { grid-column: 2; color: var(--muted); overflow-wrap: anywhere; }
+.review-basis-item { display: grid; gap: 6px; min-width: 0; padding: 8px; border-radius: 7px; background: var(--control); }
+.review-basis-summary { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: baseline; min-width: 0; }
+.review-basis-summary b { flex: 0 0 auto; color: var(--green); }
+.review-basis-summary span { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.review-basis-item small { display: block; padding-top: 5px; color: var(--muted); border-top: 1px solid var(--line); line-height: 1.45; overflow-wrap: anywhere; }
 .field-review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .field-review-actions .primary { min-height: 36px; }
 .review-complete-panel { display: grid; gap: 10px; margin-top: 18px; padding: 18px 12px; text-align: center; border: 1px solid color-mix(in srgb,var(--green) 55%,var(--line)); border-radius: 12px; background: var(--mint); }

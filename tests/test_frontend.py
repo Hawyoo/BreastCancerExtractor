@@ -296,4 +296,6 @@ def test_review_actions_completion_summary_delete_and_conflict_gallery_are_prese
     assert 'api(`/api/patients/${id}`' in javascript
     assert "全部问题与答案" in javascript
     assert 'id="review-inference-basis"' in html
-    assert "TNM评估依据" in javascript
+    assert "TNM评估依据" not in javascript
+    assert "<strong>依据</strong>" in javascript
+    assert 'class="review-basis-item"' in javascript
