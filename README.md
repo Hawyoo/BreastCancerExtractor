@@ -30,6 +30,22 @@
 
 尚未完成的模块包括完整 AJCC 确定性分期规则引擎、证据文字框精确回链、原生 XLSX 导出和离线版镜像打包。当前已支持患者级批量处理队列、全部患者宽表预览及 Excel 兼容 UTF-8 CSV 导出。AI 可抽取原文 TNM；原文没有 TNM 时可按事实推断，但推断结果强制进入人工复核。
 
+## Windows Native / Portable
+
+项目现在由同一套核心代码支持 Docker 与 Windows Native。Windows 发布形式为 **PyInstaller onedir**，最终用户不需要安装 Python、uv、Conda 或 Docker：
+
+```text
+下载完整的 BreastCancerExtractor 文件夹
+↓
+解压
+↓
+双击 BreastCancerExtractor.exe
+```
+
+Portable 会自动启动随包提供的 PaddleOCR；先连接 `127.0.0.1:11434` 上已有的 Ollama，未检测到服务时再尝试启动 `runtime/ollama/ollama.exe`。模型仍由 Web 模型管理页面选择，不在核心业务代码中写死。数据库、脱敏图片、模型和本地知识库均保存在 exe 同级子目录。
+
+开发者可双击 `start-native.bat` 在 Windows Python 环境直接运行。生成 Portable 包时双击 `build-portable.bat`，输出位于 `dist/BreastCancerExtractor/`。必须复制整个目录，不能只复制 exe。详细说明见 [`docs/WINDOWS_PORTABLE.md`](docs/WINDOWS_PORTABLE.md)，迁移边界和验证记录见 [`docs/WINDOWS_NATIVE_MIGRATION.md`](docs/WINDOWS_NATIVE_MIGRATION.md)。
+
 字段定义和仍需补充的医院口径详见 `knowledge/manual/知识库手册.md`。
 
 ## 隐私模型
@@ -50,7 +66,7 @@ workspace/patients/<patient_code>/sanitized/<uuid>.png
 
 ## 在一台新 Windows 电脑上安装
 
-本节用于从零安装。当前仓库提供的是 **MVP 源码构建版**：可以运行患者管理、浏览器内裁剪/脱敏/ROI、后台批量任务队列、PaddleOCR、Ollama 结构化抽取、人工审核、全部患者宽表预览及 Excel 兼容 CSV 导出；原生 XLSX 导出和制作好的离线安装包仍未完成。
+本节是 Docker 方式的从零安装说明。若使用已经构建好的 Windows Portable 发行目录，只需完整解压并双击 `BreastCancerExtractor.exe`，不执行本节的 Docker/WSL 安装步骤。
 
 ### 最简单的安装方式：双击一个文件
 

@@ -6,6 +6,7 @@ services:
     image: breast-cancer-extractor-app:0.1.0
     restart: unless-stopped
     environment:
+      RUNTIME_MODE: docker
       OFFLINE_MODE: ${OFFLINE_MODE:-true}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OCR_URL: ${OCR_URL:-http://ocr:8001}

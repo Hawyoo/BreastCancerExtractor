@@ -1,7 +1,8 @@
 from functools import lru_cache
-from pathlib import Path
 
 import yaml
+
+from app.config import settings
 
 DOCUMENT_GROUPS = {
     "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
@@ -33,14 +34,14 @@ DOCUMENT_FIELD_EXCLUSIONS = {
 
 @lru_cache
 def questionnaire_catalog() -> list[dict]:
-    path = Path("knowledge/schema/cohort_fields.yaml")
+    path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     return payload["fields"]
 
 
 @lru_cache
 def questionnaire_option_index() -> dict[str, list[dict[str, str]]]:
-    path = Path("knowledge/schema/wps_form_2026_04_09.yaml")
+    path = settings.knowledge_path / "schema" / "wps_form_2026_04_09.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     result: dict[str, list[dict[str, str]]] = {}
     for key, definition in payload.get("choice_fields", {}).items():
@@ -81,14 +82,14 @@ def questionnaire_field_index() -> dict[str, dict]:
 
 @lru_cache
 def document_rules() -> dict[str, list[dict]]:
-    path = Path("knowledge/rules/document_rules.yaml")
+    path = settings.knowledge_path / "rules" / "document_rules.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     return payload.get("document_rules", {})
 
 
 @lru_cache
 def data_processing_preferences() -> dict:
-    path = Path("knowledge/rules/data_processing_preferences.yaml")
+    path = settings.knowledge_path / "rules" / "data_processing_preferences.yaml"
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 

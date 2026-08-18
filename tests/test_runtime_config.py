@@ -12,7 +12,7 @@ def test_ollama_provider_selection_is_persisted(tmp_path, monkeypatch):
     selected = save_ollama_provider("WINDOWS_HOST")
     assert selected == {
         "provider": "WINDOWS_HOST",
-        "endpoint": "http://host.docker.internal:11434",
+        "endpoint": "http://127.0.0.1:11434",
     }
     assert get_ollama_provider() == selected
 
@@ -44,3 +44,12 @@ def test_changing_provider_does_not_erase_model_choices(tmp_path, monkeypatch):
     save_ollama_provider("DOCKER")
     save_ollama_provider("WINDOWS_HOST")
     assert get_selected_ollama_model("WINDOWS_HOST") == "windows-model:latest"
+
+
+def test_windows_native_defaults_to_local_windows_ollama(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "database_path", tmp_path / "database" / "test.db")
+    monkeypatch.setattr(settings, "runtime_mode", "windows_native")
+    assert get_ollama_provider() == {
+        "provider": "WINDOWS_HOST",
+        "endpoint": "http://127.0.0.1:11434",
+    }
