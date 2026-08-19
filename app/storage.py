@@ -54,7 +54,7 @@ async def save_sanitized_image(
     """Persist only a browser-reencoded, sanitized image."""
     prepared = await prepare_sanitized_image(upload, metadata)
     document_id = uuid.uuid4().hex
-    data_root = settings.database_path.parent
+    data_root = settings.data_path
     patient_dir = data_root / "patients" / patient_code / "sanitized"
     patient_dir.mkdir(parents=True, exist_ok=True)
     destination = patient_dir / f"{document_id}.png"
@@ -83,13 +83,15 @@ async def replace_sanitized_image(
 
 
 def safe_data_file(relative_path: str) -> Path:
-    root = settings.database_path.parent.resolve()
+    root = settings.data_path.resolve()
     candidate = (root / relative_path).resolve()
     if root not in candidate.parents:
         raise HTTPException(status_code=400, detail="Invalid file path")
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return candidate
+
+
 def scan_gguf_files() -> list[dict[str, str | int]]:
     root = settings.model_import_path
     root.mkdir(parents=True, exist_ok=True)
