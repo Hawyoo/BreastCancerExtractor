@@ -15,7 +15,11 @@ def test_integer_fields_reject_free_text_hallucinations():
 
 
 def test_chronic_disease_is_a_real_multiselect():
-    metadata = questionnaire_field_index()["chronic_disease"]
+    field_index = questionnaire_field_index()
+    assert field_index["has_chronic_disease"]["field_label"] == "是否患慢性病"
+    metadata = field_index["chronic_disease"]
+    assert metadata["field_label"] == "慢性病（可多选）"
+    assert field_index["chronic_disease_other"]["field_label"] == "其他慢性病（请填写）"
     assert metadata["field_type"] == "multiselect"
     assert [item["value"] for item in metadata["field_options"]] == [
         "HYPERTENSION",
