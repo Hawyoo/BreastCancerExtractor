@@ -19,6 +19,100 @@ OCR_PORT = 8001
 OLLAMA_PORT = int(os.getenv("BCE_OLLAMA_PORT", "11434"))
 
 
+class _WindowsKillOnCloseJob:
+    """Own child processes started by this launcher on Windows.
+
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is the important part: even when the
+    console is closed or the launcher crashes before Python cleanup runs, the
+    OS closes this process's job handle and terminates every process in the
+    assigned child tree. External services that were already running are never
+    assigned to this job and therefore are not affected.
+    """
+
+    def __init__(self) -> None:
+        self.handle = None
+        self._kernel32 = None
+        if os.name != "nt":
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        ULONG_PTR = ctypes.c_size_t
+        SIZE_T = ctypes.c_size_t
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", SIZE_T),
+                ("MaximumWorkingSetSize", SIZE_T),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ULONG_PTR),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_ulonglong),
+                ("WriteOperationCount", ctypes.c_ulonglong),
+                ("OtherOperationCount", ctypes.c_ulonglong),
+                ("ReadTransferCount", ctypes.c_ulonglong),
+                ("WriteTransferCount", ctypes.c_ulonglong),
+                ("OtherTransferCount", ctypes.c_ulonglong),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", SIZE_T),
+                ("JobMemoryLimit", SIZE_T),
+                ("PeakProcessMemoryUsed", SIZE_T),
+                ("PeakJobMemoryUsed", SIZE_T),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.CreateJobObjectW(None, None)
+        if not handle:
+            raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = 0x00002000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            error = ctypes.get_last_error()
+            kernel32.CloseHandle(handle)
+            raise OSError(error, "SetInformationJobObject failed")
+        self.handle = handle
+        self._kernel32 = kernel32
+
+    def assign(self, process: subprocess.Popen) -> bool:
+        if os.name != "nt" or self.handle is None or process.poll() is not None:
+            return False
+        import ctypes
+        from ctypes import wintypes
+
+        if self._kernel32.AssignProcessToJobObject(self.handle, wintypes.HANDLE(process._handle)):
+            return True
+        error = ctypes.get_last_error()
+        print(f"警告：无法将子进程 {process.pid} 加入 Windows Job Object（错误 {error}）。")
+        return False
+
+    def close(self) -> None:
+        if os.name == "nt" and self.handle is not None:
+            self._kernel32.CloseHandle(self.handle)
+            self.handle = None
+
+
 def _portable_root() -> Path:
     configured = os.getenv("BCE_PORTABLE_ROOT")
     if configured:
@@ -83,9 +177,18 @@ def _configure_paddle_home(root: Path, environment: dict[str, str] | None = None
     return target
 
 
-def _spawn(command: list[str], *, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.Popen:
+def _spawn(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+    job: _WindowsKillOnCloseJob | None = None,
+) -> subprocess.Popen:
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    return subprocess.Popen(command, env=env, cwd=cwd, creationflags=flags)
+    process = subprocess.Popen(command, env=env, cwd=cwd, creationflags=flags)
+    if job is not None:
+        job.assign(process)
+    return process
 
 
 def _find_ollama(root: Path) -> Path | None:
@@ -99,8 +202,23 @@ def _find_ollama(root: Path) -> Path | None:
     return next((item.resolve() for item in candidates if item.is_file()), None)
 
 
-def ensure_ollama(root: Path) -> subprocess.Popen | None:
+def _ollama_disabled(root: Path) -> bool:
+    config = root / "database" / "runtime_config.json"
+    if not config.is_file():
+        return False
+    try:
+        payload = json.loads(config.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+    return isinstance(payload, dict) and payload.get("ollama_provider") == "DISABLED"
+
+
+def ensure_ollama(root: Path, job: _WindowsKillOnCloseJob | None = None) -> subprocess.Popen | None:
+    # An already-running Ollama is external ownership: use it, but never assign
+    # or terminate it when BreastCancerExtractor exits.
     if _url_available(f"http://{APP_HOST}:{OLLAMA_PORT}/api/tags"):
+        return None
+    if _ollama_disabled(root):
         return None
     executable = _find_ollama(root)
     if executable is None:
@@ -110,7 +228,7 @@ def ensure_ollama(root: Path) -> subprocess.Popen | None:
     environment.setdefault("OLLAMA_MODELS", str(root / "models" / "ollama"))
     environment.setdefault("OLLAMA_FLASH_ATTENTION", "1")
     environment.setdefault("OLLAMA_KEEP_ALIVE", "-1")
-    process = _spawn([str(executable), "serve"], env=environment, cwd=executable.parent)
+    process = _spawn([str(executable), "serve"], env=environment, cwd=executable.parent, job=job)
     _wait_for(f"http://{APP_HOST}:{OLLAMA_PORT}/api/tags", timeout=30)
     return process
 
@@ -124,13 +242,13 @@ def _wait_for(url: str, timeout: float) -> bool:
     return False
 
 
-def ensure_ocr(root: Path) -> subprocess.Popen | None:
+def ensure_ocr(root: Path, job: _WindowsKillOnCloseJob | None = None) -> subprocess.Popen | None:
     if _url_available(f"http://{APP_HOST}:{OCR_PORT}/health"):
         return None
     environment = _configure_paddle_home(root, os.environ.copy())
-    process = _spawn(_child_command("ocr"), env=environment, cwd=_child_working_directory(root))
+    process = _spawn(_child_command("ocr"), env=environment, cwd=_child_working_directory(root), job=job)
     if not _wait_for(f"http://{APP_HOST}:{OCR_PORT}/health", timeout=90):
-        process.terminate()
+        _terminate(process)
         raise RuntimeError("PaddleOCR 本地服务启动失败")
     return process
 
@@ -141,8 +259,34 @@ def _terminate(process: subprocess.Popen | None) -> None:
     process.terminate()
     try:
         process.wait(timeout=8)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    else:
+        process.kill()
+    try:
+        process.wait(timeout=3)
     except subprocess.TimeoutExpired:
         process.kill()
+
+
+def _watch_ai_disconnect(root: Path, process: subprocess.Popen, stop_event: threading.Event) -> None:
+    """Release only the Ollama process this launcher started when AI is disabled."""
+    while not stop_event.wait(0.5):
+        if process.poll() is not None:
+            return
+        if _ollama_disabled(root):
+            print("已切换为仅 OCR 模式，正在停止本程序启动的 Ollama…")
+            _terminate(process)
+            return
 
 
 def run_ocr_service() -> None:
@@ -182,40 +326,57 @@ def run_launcher(port: int) -> int:
     if _port_available(APP_HOST, port):
         raise RuntimeError(f"端口 {port} 已被其他程序占用")
 
+    job = _WindowsKillOnCloseJob()
     ocr_process: subprocess.Popen | None = None
     ollama_process: subprocess.Popen | None = None
+    watcher_stop = threading.Event()
     try:
         print("正在启动本地 OCR…")
-        ocr_process = ensure_ocr(root)
-        print("正在检测 Ollama…")
-        ollama_process = ensure_ollama(root)
-        if not _url_available(f"http://{APP_HOST}:{OLLAMA_PORT}/api/tags"):
-            print("未检测到 Ollama；主程序仍会启动，可稍后放入或安装 Ollama runtime。")
+        ocr_process = ensure_ocr(root, job=job)
+        if _ollama_disabled(root):
+            print("本地 AI 已断开：仅启动 OCR，不启动 Ollama。")
+        else:
+            print("正在检测 Ollama…")
+            ollama_process = ensure_ollama(root, job=job)
+            if not _url_available(f"http://{APP_HOST}:{OLLAMA_PORT}/api/tags"):
+                print("未检测到 Ollama；主程序仍会启动，可使用仅 OCR 模式。")
+            if ollama_process is not None:
+                threading.Thread(
+                    target=_watch_ai_disconnect,
+                    args=(root, ollama_process, watcher_stop),
+                    daemon=True,
+                ).start()
         threading.Thread(
             target=lambda: (_wait_for(f"{app_url}/api/health", 60) and webbrowser.open(app_url)),
             daemon=True,
         ).start()
         print(f"Breast Cancer Extractor: {app_url}")
-        print("关闭此窗口或按 Ctrl+C 可停止本次 Windows Native 服务。")
+        print("关闭此窗口或按 Ctrl+C 将停止本程序启动的 OCR/Ollama 子进程树。")
         run_app_service(port)
         return 0
     finally:
+        watcher_stop.set()
         _terminate(ocr_process)
         _terminate(ollama_process)
+        # Closing this handle is the last-resort tree cleanup. It also covers
+        # Ctrl+Close / abnormal launcher termination when finally cannot run.
+        job.close()
 
 
 def run_smoke_test(port: int) -> int:
     root = configure_native_environment()
+    job = _WindowsKillOnCloseJob()
     ocr_process: subprocess.Popen | None = None
     ollama_process: subprocess.Popen | None = None
     app_process: subprocess.Popen | None = None
     try:
-        ocr_process = ensure_ocr(root)
-        ollama_process = ensure_ollama(root)
+        ocr_process = ensure_ocr(root, job=job)
+        ollama_process = ensure_ollama(root, job=job)
         app_process = _spawn(
             [*_child_command("app"), "--port", str(port)],
             env=os.environ.copy(),
             cwd=_child_working_directory(root),
+            job=job,
         )
         health_url = f"http://{APP_HOST}:{port}/api/health"
         if not _wait_for(health_url, timeout=60):
@@ -230,6 +391,7 @@ def run_smoke_test(port: int) -> int:
         _terminate(app_process)
         _terminate(ocr_process)
         _terminate(ollama_process)
+        job.close()
 
 
 def main() -> int:
