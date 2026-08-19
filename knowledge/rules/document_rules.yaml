@@ -1,13 +1,13 @@
 version: 0.3.0
 document_rules:
   MEDICAL_RECORD_COVER:
-    - id: medical_record_cover_scope
-      description: 本队列病案首页重点只用于病案号、出生日期（YYYY-MM-DD）和电话/联系方式；其他人口学信息不要因版式邻近关系自动扩展抽取。
-      preferred_fields: [record_number, birth_date, contact]
     - id: medical_record_cover_sex_exclusion
       field: sex
       action: EXCLUDE
       description: 病案首页性别栏版式复杂，本队列禁止从病案首页抽取性别；应从入院记录等其他页面提取。
+    - id: medical_record_cover_scope
+      description: 本队列病案首页重点只用于病案号、出生日期（YYYY-MM-DD）和电话/联系方式；其他人口学信息不要因版式邻近关系自动扩展抽取。联系电话是必查字段，只要页面存在明确号码就必须尝试抽取。
+      preferred_fields: [record_number, birth_date, contact]
 
   ADMISSION:
     - id: admission_scope
@@ -133,14 +133,14 @@ document_rules:
 
   TREATMENT:
     - id: treatment_scope
-      description: 重点抽取是否放疗、化疗方案与周期、内分泌方案、靶向方案与周期、免疫治疗方案与周期、复发/转移/第二原发癌及其时间、末次就诊时间。
+      description: 重点抽取是否放疗、化疗方案与周期、内分泌方案、靶向方案与周期、免疫治疗方案与周期、复发/转移/第二原发癌及其时间、末次就诊时间。末次就诊时间是必查字段，只要对应ROI或正文存在明确日期就必须抽取。
       preferred_topics: [放疗, 化疗周期, 化疗方案, 内分泌方案, 靶向方案, 靶向周期, 免疫治疗方案, 免疫治疗周期, 复发, 转移, 第二原发癌, 末次就诊时间]
     - id: ec_ac_t_cycle_aggregation
       fields: [neoadjuvant_cycles, postoperative_chemotherapy_cycles]
       description: EC-T或AC-T常将EC/AC与T阶段周期分开书写；若原文明示典型4周期EC/AC加4周期T，则总周期按4+4=8汇总，同时保留分段原文证据。不得在原文周期不清楚时仅凭方案名称臆测8周期。
     - id: last_visit_roi_priority
       field: last_visit_date
-      description: 末次就诊时间优先从专门框选的对应ROI读取；ROI内日期与其他页面冲突时保留来源并进入人工复核。
+      description: 末次就诊时间优先从专门框选的对应ROI读取；只要ROI或正文存在明确日期就必须输出last_visit_date，不得因同页存在其他治疗日期而遗漏。ROI内日期与其他页面冲突时保留来源并进入人工复核。
     - id: conditional_treatment_questions
       description: 方案、周期等依赖字段只有当前提治疗字段为YES时才适用；用户可见结果和导出统一显示NA。
     - id: supportive_immune_care_is_not_antitumor_immunotherapy
