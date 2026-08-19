@@ -332,5 +332,9 @@
   }
 
   installLearningButton();
+  const shutdownScript = document.createElement("script");
+  shutdownScript.src = "/shutdown.js";
+  shutdownScript.defer = true;
+  document.body.appendChild(shutdownScript);
   lockCurrentFieldReview();
 })();
