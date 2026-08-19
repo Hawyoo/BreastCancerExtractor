@@ -1,5 +1,9 @@
+import pytest
+from pydantic import ValidationError
+
 from app.derived_fields import parse_measurement_components_mm, parse_tnm_components
 from app.knowledge import extraction_prompt, questionnaire_catalog
+from app.models import ObservationCreate
 
 
 def add_and_verify(client, patient_id: int, field_name: str, value: str) -> str:
@@ -33,6 +37,7 @@ def test_measurement_parser_preserves_source_order_and_normalizes_units():
     assert parse_measurement_components_mm("32×18×15 mm") == ("32", "18", "15")
     assert parse_measurement_components_mm("3.2*1.8 cm") == ("32", "18", None)
     assert parse_measurement_components_mm("21 x 9") == ("21", "9", None)
+    assert parse_measurement_components_mm([32, None, 15]) == ("32", None, "15")
 
 
 def test_derived_fields_exist_in_review_catalog_but_not_ai_prompt():
@@ -45,6 +50,13 @@ def test_derived_fields_exist_in_review_catalog_but_not_ai_prompt():
     assert "clinical_stage" in allowed
     assert "clinical_t_component" not in allowed
     assert "clinical_t_component" not in prompt
+
+
+def test_derived_fields_cannot_be_created_manually():
+    with pytest.raises(ValidationError):
+        ObservationCreate(field_name="clinical_t_component", value="cT2")
+    with pytest.raises(ValidationError):
+        ObservationCreate(field_name="pre_us_tumor_size_mm_dim1_mm", value="32")
 
 
 def test_verified_master_fields_materialize_readonly_projections(client):
