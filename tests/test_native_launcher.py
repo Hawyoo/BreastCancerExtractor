@@ -9,10 +9,16 @@ def test_native_environment_uses_portable_subdirectories(tmp_path, monkeypatch):
     root = configure_native_environment(tmp_path)
 
     assert root == tmp_path.resolve()
-    assert Path(os.environ["DATABASE_PATH"]) == root / "database" / "catalog.sqlite"
+    assert Path(os.environ["DATA_PATH"]) == root / "database"
+    assert Path(os.environ["CONFIG_PATH"]) == root / "config"
+    assert Path(os.environ["RUNTIME_PATH"]) == root / "runtime"
+    assert Path(os.environ["DATABASE_PATH"]) == root / "runtime" / "catalog.sqlite"
     assert Path(os.environ["MODEL_IMPORT_PATH"]) == root / "models" / "llm"
     assert Path(os.environ["PADDLE_PDX_CACHE_HOME"]) == root / "runtime" / "paddlex-cache"
     assert os.environ["RUNTIME_MODE"] == "windows_native"
+    assert (root / "database" / "patients").is_dir()
+    assert (root / "config").is_dir()
+    assert (root / "runtime").is_dir()
 
 
 def test_bundled_ollama_is_preferred(tmp_path, monkeypatch):

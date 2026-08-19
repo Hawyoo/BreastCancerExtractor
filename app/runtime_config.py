@@ -4,12 +4,15 @@ from urllib.parse import urlparse
 
 from app.config import settings
 
+DISABLED_OLLAMA_ENDPOINT = "disabled://local-ai"
+
 
 def ollama_provider_endpoints() -> dict[str, str]:
     native_url = settings.ollama_url
     if urlparse(native_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
         native_url = "http://127.0.0.1:11434"
     return {
+        "DISABLED": DISABLED_OLLAMA_ENDPOINT,
         "DOCKER": "http://ollama:11434",
         "WINDOWS_HOST": (
             "http://host.docker.internal:11434"
@@ -20,11 +23,23 @@ def ollama_provider_endpoints() -> dict[str, str]:
 
 
 def runtime_config_path() -> Path:
-    return settings.database_path.parent / "runtime_config.json"
+    return settings.config_path / "runtime_config.json"
+
+
+def _migrate_legacy_runtime_config() -> Path:
+    target = runtime_config_path()
+    legacy = settings.data_path / "runtime_config.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if legacy.is_file():
+        if not target.exists():
+            legacy.replace(target)
+        else:
+            legacy.unlink(missing_ok=True)
+    return target
 
 
 def load_runtime_config() -> dict[str, object]:
-    path = runtime_config_path()
+    path = _migrate_legacy_runtime_config()
     if not path.is_file():
         return {}
     try:
@@ -35,7 +50,7 @@ def load_runtime_config() -> dict[str, object]:
 
 
 def save_runtime_config(payload: dict[str, object]) -> None:
-    path = runtime_config_path()
+    path = _migrate_legacy_runtime_config()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -81,6 +96,8 @@ def get_selected_ollama_model(provider: str | None = None) -> str:
 
 def save_selected_ollama_model(model_name: str, provider: str | None = None) -> dict[str, str]:
     selected_provider = provider or get_ollama_provider()["provider"]
+    if selected_provider == "DISABLED":
+        raise ValueError("Local AI is disabled")
     if selected_provider not in ollama_provider_endpoints():
         raise ValueError("Unsupported Ollama provider")
     payload = load_runtime_config()

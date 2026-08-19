@@ -1,4 +1,4 @@
-version: 0.1.0
+version: 0.3.0
 title: 本队列数据处理偏好
 
 source_priority:
@@ -30,6 +30,27 @@ source_priority:
   surgery_date:
     ordered_documents: [SURGERY, DISCHARGE, ADMISSION]
     rule: 手术日期以手术记录为首选来源，出院记录中的手术摘要仅作为次级来源。
+  last_visit_date:
+    ordered_documents: [TREATMENT, DISCHARGE]
+    rule: 末次就诊时间优先读取人工框选的随访/末次就诊ROI；其他页面仅作为次级来源。
+
+page_scope:
+  MEDICAL_RECORD_COVER:
+    preferred_topics: [病案号, 出生日期, 电话]
+  ADMISSION:
+    preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 偏侧性]
+  SURGERY:
+    preferred_topics: [偏侧性, 手术时间, 全切或保乳, 是否重建, 重建方式]
+  DISCHARGE:
+    preferred_topics: [TNM分期, 病理类型, 术后病理, 穿刺病理, 免疫组化, FISH, 治疗方案]
+  ULTRASOUND:
+    preferred_topics: [恶性肿块大小, 肿块位置, 距乳头距离, 距皮肤距离, 淋巴结情况, BI-RADS]
+  MAMMOGRAPHY:
+    preferred_topics: [恶性肿块大小, 肿块位置, 距乳头距离, 距皮肤距离, 淋巴结情况, 钙化, BI-RADS]
+  MRI:
+    preferred_topics: [恶性肿块大小, 肿块位置, 距乳头距离, 距皮肤距离, 淋巴结情况, BI-RADS]
+  TREATMENT:
+    preferred_topics: [放疗, 化疗方案, 化疗周期, 内分泌方案, 靶向方案, 靶向周期, 免疫治疗方案, 免疫治疗周期, 复发, 转移, 第二原发癌, 末次就诊时间]
 
 staging_summary:
   clinical_stage:
@@ -42,27 +63,50 @@ staging_summary:
     preferred_output_after_neoadjuvant: ypTNM
     evidence_order: [explicit_surgical_pathology_stage, surgical_pathology_primary_tumor, surgical_pathology_regional_nodes, documented_distant_metastasis]
     rule: 未行新辅助时使用pTNM；新辅助后手术病理使用ypTNM。T和N以术后病理报告为核心证据，手术记录不得替代术后病理。不得把未发现远处转移写成pM0。
+  stage_group:
+    store: false
+    infer: false
+    rule: 当前项目不保存AJCC解剖学或预后Stage Group；只保留完整cTNM/ycTNM和pTNM/ypTNM。
   shared_rules:
     - 病历明确记录的同语境TNM优先于AI推断；记录与证据明显矛盾时保留记录并提示人工复核。
     - 临床字段只接受cTNM或ycTNM，病理字段只接受pTNM或ypTNM；不得混用前缀。
     - 输出必须包含T、N、M三个组成部分；未知部分使用TX、NX或无法评估，不得凭空补齐。
-    - 分期组与TNM组成分开理解；当前问卷字段优先填写规范化TNM，不用单独的I/II/III/IV替代。
+    - 完整TNM主字段是唯一允许人工修改的分期字段；T/N/M拆分值仅在主字段人工确认后自动生成。
+  verified_postprocessing:
+    clinical_stage:
+      outputs: [clinical_t_component, clinical_n_component, clinical_m_component]
+      mode: DERIVED_READONLY
+    pathological_stage:
+      outputs: [pathological_t_component, pathological_n_component, pathological_m_component]
+      mode: DERIVED_READONLY
+    rule: 派生T/N/M不进入AI抽取、不单独人工填写或确认；主字段修改并重新确认后自动重算。
   component_evidence:
     cT:
       preferred_sources: [pretreatment_ultrasound, pretreatment_mammography, pretreatment_mri, clinical_examination]
-      rule: 同时列出超声、钼靶、MRI记录的治疗前肿块径线和日期；基于治疗前原发肿瘤的最大浸润范围提出cT候选，影像结果不一致时保留各自数值并进入人工复核。
+      rule: 对按肿瘤大小划分的cT1-cT3，依据治疗前影像记录的恶性原发灶最大径提出候选；BI-RADS分级不参与T分期。若存在明确皮肤/胸壁侵犯或炎性乳腺癌等T4证据，应单独保留并进入正式TNM规则判断。
     pT_or_ypT:
       preferred_sources: [surgical_pathology_invasive_tumor_size]
       rule: 以术后病理报告记载的浸润癌最大径及局部侵犯为依据；新辅助后使用ypT。不得用手术记录中的目测大小覆盖病理大小，也不得把单纯原位癌范围或肿瘤床大小直接当作浸润癌pT大小。
     cN:
       preferred_sources: [clinical_examination, pretreatment_ultrasound, pretreatment_mri, regional_node_needle_biopsy]
-      rule: 综合区域淋巴结查体、影像及穿刺结果；可疑影像与穿刺阳性/阴性分别保留，不得只按淋巴结大小判断转移。
+      rule: 区域淋巴结影像描述必须按原报告如实保留；用于cN判断时再综合查体、影像及穿刺结果，不得把影像报告原文改写成模型自行判断的阳性/阴性。
     pN_or_ypN:
       preferred_sources: [surgical_pathology_regional_nodes]
       rule: 以术后病理的淋巴结部位、阳性数/检出数、转移灶大小和治疗时点为依据；新辅助后使用ypN。
     M:
       preferred_sources: [distant_staging_imaging, distant_site_pathology]
       rule: M描述远处转移。临床无远处转移证据可形成cM0候选；pM仅在远处转移灶获得病理证实时使用，不存在pM0或ypM0的自动推断。
+
+imaging:
+  malignant_lesion_only:
+    applies_to: [ULTRASOUND, MAMMOGRAPHY, MRI]
+    rule: 所有影像只关注明确恶性或明确目标乳腺肿块；明确良性病灶不进入目标肿块字段。
+  post_neoadjuvant_recheck:
+    applies_to: [ULTRASOUND, MAMMOGRAPHY, MRI]
+    rule: 若接受新辅助治疗，必须结合检查日期确认是否存在新辅助完成后的影像复查；治疗前与治疗后观察分别保存，不得覆盖。
+  regional_nodes:
+    applies_to: [ULTRASOUND, MAMMOGRAPHY, MRI]
+    rule: 淋巴结情况按影像报告如实填写，保留原始描述；结构化判断不得替换证据原文。
 
 treatment_classification:
   antitumor_immunotherapy:
@@ -75,8 +119,21 @@ treatment_classification:
       - 免疫支持治疗
       - 升白针、粒细胞集落刺激因子或重组人粒细胞刺激因子
     rule: “免疫及对症支持治疗”属于常规支持治疗语境，不能据此填写术后免疫治疗YES；仅有支持治疗证据时该字段留空，而不是推断为NO。
+  ec_ac_t_cycles:
+    applies_to: [neoadjuvant_cycles, postoperative_chemotherapy_cycles]
+    rule: EC-T/AC-T可把EC/AC与T阶段分开记录；原文明示4周期EC/AC加4周期T时，总周期汇总为8并保留4+4证据。不得仅凭方案名称自动假定8周期。
 
 derivations:
+  menopause_default_premenopausal:
+    target_field: menopausal_status
+    documents: [ADMISSION]
+    rule: 按本队列人工口径，月经史没有明确绝经年龄或明确绝经状态时，一般推断为未绝经。
+    output: 'NO'
+    source_mode: INFERRED
+    needs_review: true
+    safeguards:
+      - 原文明确写明绝经、闭经、停经多年或其他明确绝经事实时不得应用本规则。
+      - 必须保存月经史原文并进入人工审核。
   menopause_from_last_menstrual_period:
     target_field: menopausal_status
     documents: [ADMISSION]
@@ -86,7 +143,6 @@ derivations:
     needs_review: true
     safeguards:
       - 末次月经必须是可识别的日期，不能把年龄、年份或模糊文字误当完整日期。
-      - 必须同时取得入院日期并确认两者时间接近；无法比较时不得推断。
       - 保存末次月经日期、入院日期及原文作为推断依据。
   metastatic_at_presentation_default:
     target_field: metastatic_at_presentation
@@ -96,7 +152,7 @@ derivations:
     needs_review: true
     safeguards:
       - 后续若发现明确转移证据，必须产生冲突提示并由人工确认。
-      - 局部区域淋巴结转移不等同于远处转移。
+      - 局部区域淋巴结转移不等于远处转移。
 
 measurements:
   breast_lesion_size:
@@ -106,17 +162,31 @@ measurements:
     input_slots: 3
     optional_slots: [height]
     separators: ['×', 'x', 'X', '*']
+    master_value_rule: 完整a×b或a×b×c表达作为唯一可编辑主字段保存；拆分字段不得覆盖完整表达。
+    verified_postprocessing:
+      mode: DERIVED_READONLY
+      outputs: [dimension_1_mm, dimension_2_mm, dimension_3_mm]
+      rule: 仅在完整尺寸主字段人工确认后，按原文顺序生成三个只读径线值；缺失的第三径保持空白。主字段修改并重新确认后自动重算。
     rule: 按原文顺序保存最多三个径线值；常见为两个径线，第三个输入框允许留空，不得复制或臆测第三径。
     conversion:
-      - cm统一换算为mm后保存。
-      - 保留原始尺寸文字作为证据。
+      - cm统一换算为mm后保存派生径线。
+      - 完整原始尺寸表达继续保留作为主字段和证据。
       - 不把三个径线相乘后称为体积；只有明确需要时才另行计算体积。
+
+missing_values:
+  user_visible_not_applicable: NA
+  height_cm:
+    rule: 病历没有明确身高时不得填0；用户可见结果应为NA或保持缺失直到导出为NA。
+  weight_kg:
+    rule: 病历没有明确体重时不得填0；用户可见结果应为NA或保持缺失直到导出为NA。
+  general_rule: 对明确“不适用”的项目，用户可见界面和导出统一写NA，不显示NOT_APPLICABLE。
 
 conditional_questions:
   representation:
-    unmet_prerequisite: NOT_APPLICABLE
+    internal_unmet_prerequisite: NOT_APPLICABLE
+    user_visible_value: NA
     export_value: NA
-    rule: 当前提问题不满足时，依赖问题不抽取为阴性或缺失，统一编码为NOT_APPLICABLE，宽表导出显示NA。
+    rule: 前提明确不满足时，程序内部可保留NOT_APPLICABLE作为机器状态；任何面向用户的显示和导出必须写NA，而不是NOT_APPLICABLE。
   examples:
     - prerequisite: {field: neoadjuvant_received, equals: 'YES'}
       dependents: [neoadjuvant_regimen, neoadjuvant_cycles, post_neoadj_us_available, post_neoadj_mri_available]

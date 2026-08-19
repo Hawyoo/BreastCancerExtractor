@@ -3,6 +3,7 @@ from functools import lru_cache
 import yaml
 
 from app.config import settings
+from app.derived_fields import expand_questionnaire_catalog
 
 DOCUMENT_GROUPS = {
     "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
@@ -31,12 +32,19 @@ DOCUMENT_FIELD_EXCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"sex"},
 }
 
+# Direct identifiers remain manual_restricted by default. The cohort explicitly
+# requires the contact number to be extracted from the medical-record cover,
+# so this one document-specific exception is intentionally narrow.
+DOCUMENT_FIELD_INCLUSIONS = {
+    "MEDICAL_RECORD_COVER": {"contact"},
+}
+
 
 @lru_cache
 def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return payload["fields"]
+    return expand_questionnaire_catalog(payload["fields"])
 
 
 @lru_cache
@@ -60,7 +68,10 @@ def questionnaire_option_index() -> dict[str, list[dict[str, str]]]:
 
 @lru_cache
 def field_catalog() -> list[dict]:
-    return [field for field in questionnaire_catalog() if field.get("capture") != "manual_restricted"]
+    return [
+        field for field in questionnaire_catalog()
+        if field.get("capture") not in {"manual_restricted", "derived_readonly"}
+    ]
 
 
 @lru_cache
@@ -75,6 +86,8 @@ def questionnaire_field_index() -> dict[str, dict]:
             "allowed_values": field.get("values"),
             "field_options": option_index.get(field["key"], []),
             "depends_on": field.get("depends_on"),
+            "capture": field.get("capture"),
+            "derived_from": field.get("derived_from"),
         }
         for index, field in enumerate(questionnaire_catalog())
     }
@@ -126,6 +139,15 @@ def extraction_prompt(
     catalog = field_catalog()
     if groups:
         catalog = [field for field in catalog if field.get("group") in groups]
+
+    included_for_document = DOCUMENT_FIELD_INCLUSIONS.get(document_type, set())
+    if included_for_document:
+        existing = {field["key"] for field in catalog}
+        catalog.extend(
+            field for field in questionnaire_catalog()
+            if field["key"] in included_for_document and field["key"] not in existing
+        )
+
     excluded_for_document = DOCUMENT_FIELD_EXCLUSIONS.get(document_type, set())
     if excluded_for_document:
         catalog = [field for field in catalog if field.get("key") not in excluded_for_document]

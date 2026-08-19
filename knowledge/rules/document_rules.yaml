@@ -1,23 +1,38 @@
-version: 0.2.0
+version: 0.3.0
 document_rules:
   MEDICAL_RECORD_COVER:
     - id: medical_record_cover_sex_exclusion
       field: sex
       action: EXCLUDE
       description: 病案首页性别栏版式复杂，本队列禁止从病案首页抽取性别；应从入院记录等其他页面提取。
+    - id: medical_record_cover_scope
+      description: 本队列病案首页重点只用于病案号、出生日期（YYYY-MM-DD）和电话/联系方式；其他人口学信息不要因版式邻近关系自动扩展抽取。联系电话是必查字段，只要页面存在明确号码就必须尝试抽取。
+      preferred_fields: [record_number, birth_date, contact]
+
   ADMISSION:
+    - id: admission_scope
+      description: 入院记录重点抽取性别、职业、既往史、婚育史、月经史、家族史和乳腺癌偏侧性；相关字段必须以本页明确文字为依据。
+      preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 偏侧性]
     - id: admission_sex_preferred_source
       field: sex
       description: 入院记录等叙述性页面是性别的允许来源；必须有明确性别文字才可抽取。
+    - id: menopause_default_premenopausal
+      field: menopausal_status
+      description: 按本队列人工口径，月经史未明确记录绝经年龄或明确绝经状态时，一般按未绝经处理。
+      extraction:
+        output: 'NO'
+        source_mode: INFERRED
+      safeguards:
+        - 若原文明确写有绝经、闭经、停经多年或其他明确绝经事实，则优先保留原文，不使用本缺省规则。
+        - 缺省推断必须进入人工复核，并保留月经史原文。
     - id: last_menstrual_period_near_admission
       field: menopausal_status
-      description: 若末次月经记录为与入院日期接近的具体日期，则推断未绝经。
+      description: 若末次月经记录为与入院日期接近的具体日期，则进一步支持未绝经判断。
       extraction:
         required_context: [末次月经具体日期, 入院日期]
         output: 'NO'
         source_mode: INFERRED
       safeguards:
-        - 无法同时取得两个日期时不得推断。
         - 保存两个日期及原文，并强制进入人工复核。
     - id: metastatic_at_presentation_default_no
       field: metastatic_at_presentation
@@ -28,7 +43,19 @@ document_rules:
       safeguards:
         - 区域淋巴结转移不能当作远处转移。
         - 后续发现明确远处转移时必须产生冲突提示。
+
+  SURGERY:
+    - id: surgery_scope
+      description: 手术记录重点抽取偏侧性、手术时间、乳房术式（全切/保乳）、是否重建及重建方式（假体、自体皮瓣、联合）。
+      preferred_topics: [偏侧性, 手术时间, 手术方式, 是否重建, 重建方式]
+
   DISCHARGE:
+    - id: discharge_scope
+      description: 出院记录重点抽取TNM分期、病理类型、术后病理、穿刺病理、免疫组化、FISH和治疗方案。
+      preferred_topics: [TNM分期, 病理类型, 术后病理, 穿刺病理, 免疫组化, FISH, 治疗方案]
+    - id: pathology_type_only
+      fields: [primary_pathology_type, node_pathology_type, metastasis_pathology_type, postop_tumor_pathology_type]
+      description: “病理类型”字段只填写组织学/病理类型本身，不把左右侧、TNM、临床分期或病理分期拼入病理类型文本。
     - id: metastatic_at_presentation_default_no
       field: metastatic_at_presentation
       description: 若出院记录及既有患者观察均未明确提及来院时远处转移，允许按队列口径默认编码为NO。
@@ -42,28 +69,60 @@ document_rules:
       fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
       action: EXCLUDE_CONTEXT
       description: “住院给予免疫及对症支持治疗”、升白针和粒细胞集落刺激因子属于支持治疗，不是抗肿瘤免疫治疗；没有明确抗肿瘤免疫药物时不得据此输出YES。
+
   ULTRASOUND:
+    - id: malignant_lesion_only
+      description: 只抽取报告中明确对应乳腺恶性肿块/目标病灶的大小、位置、距乳头距离、距皮肤距离、区域淋巴结和BI-RADS；明确良性病灶不得混入。
     - id: lesion_size_three_dimensions
       fields: [pre_us_tumor_size_mm, post_neoadj_us_size_mm]
       description: 按原文顺序提取长、宽、高三个径线，统一为mm；第三径缺失时留空，不得补造。
       accepted_separators: ['×', 'x', 'X', '*']
+    - id: imaging_nodes_verbatim
+      fields: [pre_us_nodes_normal, pre_us_nodes_detail, post_neoadj_us_nodes]
+      description: 淋巴结情况必须按照影像报告原文如实记录，不因大小、形态或模型经验自行改写为阳性/阴性。
+    - id: post_neoadjuvant_recheck
+      description: 若患者接受新辅助治疗，必须结合检查日期寻找新辅助完成后的复查超声，并将治疗前和治疗后结果分开保存。
+
   MAMMOGRAPHY:
+    - id: malignant_lesion_only
+      description: 只抽取明确恶性/目标乳腺肿块的大小、位置、距乳头/皮肤距离、区域淋巴结、钙化和BI-RADS；明确良性病灶不得混入。
     - id: lesion_size_three_dimensions
       description: 钼靶肿块尺寸按原文顺序保留最多三个径线，统一为mm；当前宽表没有独立钼靶尺寸列时保留在原文证据和影像元数据中。
       accepted_separators: ['×', 'x', 'X', '*']
+    - id: imaging_nodes_verbatim
+      field: pre_mmg_nodes
+      description: 淋巴结情况按钼靶报告原文如实填写，不依据模型经验二次判断。
+    - id: post_neoadjuvant_recheck
+      description: 若患者接受新辅助治疗，结合日期检查是否存在治疗完成后的钼靶复查；有复查时作为独立时间点保存，不覆盖治疗前结果。
+
   MRI:
+    - id: malignant_lesion_only
+      description: 只抽取明确恶性/目标乳腺肿块的大小、位置、距乳头/皮肤距离、区域淋巴结和BI-RADS；明确良性病灶不得混入。
     - id: lesion_size_three_dimensions
       fields: [pre_mri_tumor_size_mm, post_neoadj_mri_size_mm]
       description: 按原文顺序提取长、宽、高三个径线，统一为mm；第三径缺失时留空，不得补造。
       accepted_separators: ['×', 'x', 'X', '*']
+    - id: imaging_nodes_verbatim
+      fields: [pre_mri_nodes_normal, pre_mri_nodes_detail, post_neoadj_mri_nodes]
+      description: 淋巴结情况必须按MRI报告原文如实填写，不依据模型经验自行升级或降级。
+    - id: post_neoadjuvant_recheck
+      description: 若患者接受新辅助治疗，必须结合检查日期寻找治疗完成后的MRI复查，并将治疗前和治疗后结果分开保存。
+
   BIOPSY_PATHOLOGY:
+    - id: pathology_type_only
+      fields: [primary_pathology_type, node_pathology_type, metastasis_pathology_type]
+      description: 病理类型字段只记录病理类型本身，不拼接左右侧、TNM或分期。
     - id: pathology_grade_single_arabic_digit
       fields: [primary_pathology_grade, node_pathology_grade, metastasis_pathology_grade]
       description: 同一解剖与时间点的病理分级只输出一个值；将G1/G2/G3、I/II/III、一级/二级/三级分别归一化为阿拉伯数字1/2/3。存在多个不一致分级时保留优先候选并进入人工复核，不得并列输出多个答案。
+
   SURGICAL_PATHOLOGY:
     - id: surgical_pathology_is_primary_postoperative_source
       fields: [postop_tumor_pathology_type, postop_tumor_pathology_grade, postop_node_metastasis, pathological_stage]
       description: 术后肿块病理类型、分级、区域淋巴结结果及pTNM/ypTNM以本术后病理报告为首选来源；出院摘要和手术记录不得覆盖本报告。
+    - id: pathology_type_only
+      field: postop_tumor_pathology_type
+      description: 术后病理类型只填写组织学/病理类型本身，不把偏侧性、TNM或分期拼入。
     - id: postop_tumor_other_ihc_excludes_core_four
       field: postop_tumor_other_ihc
       description: 仅记录术后肿块ER、PR、HER2、Ki-67以外的其他免疫组化标志物，例如AR、CK5/6、EGFR、GATA3、E-cadherin、P53等。ER、PR、HER2、Ki-67已有独立字段，不得在本字段重复；若原文只有这四项，本字段留空。
@@ -71,9 +130,19 @@ document_rules:
     - id: postop_tumor_pathology_grade_single_arabic_digit
       field: postop_tumor_pathology_grade
       description: 术后肿块病理分级只输出一个阿拉伯数字1、2或3；G2、II级、Ⅱ级、二级均输出2。不要输出G2、II、2级或多个并列结果。
+
   TREATMENT:
+    - id: treatment_scope
+      description: 重点抽取是否放疗、化疗方案与周期、内分泌方案、靶向方案与周期、免疫治疗方案与周期、复发/转移/第二原发癌及其时间、末次就诊时间。末次就诊时间是必查字段，只要对应ROI或正文存在明确日期就必须抽取。
+      preferred_topics: [放疗, 化疗周期, 化疗方案, 内分泌方案, 靶向方案, 靶向周期, 免疫治疗方案, 免疫治疗周期, 复发, 转移, 第二原发癌, 末次就诊时间]
+    - id: ec_ac_t_cycle_aggregation
+      fields: [neoadjuvant_cycles, postoperative_chemotherapy_cycles]
+      description: EC-T或AC-T常将EC/AC与T阶段周期分开书写；若原文明示典型4周期EC/AC加4周期T，则总周期按4+4=8汇总，同时保留分段原文证据。不得在原文周期不清楚时仅凭方案名称臆测8周期。
+    - id: last_visit_roi_priority
+      field: last_visit_date
+      description: 末次就诊时间优先从专门框选的对应ROI读取；只要ROI或正文存在明确日期就必须输出last_visit_date，不得因同页存在其他治疗日期而遗漏。ROI内日期与其他页面冲突时保留来源并进入人工复核。
     - id: conditional_treatment_questions
-      description: 方案、周期等依赖字段只有当前提治疗字段为YES时才适用；前提为NO时依赖字段输出NOT_APPLICABLE，导出显示NA。
+      description: 方案、周期等依赖字段只有当前提治疗字段为YES时才适用；用户可见结果和导出统一显示NA。
     - id: supportive_immune_care_is_not_antitumor_immunotherapy
       fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
       action: EXCLUDE_CONTEXT

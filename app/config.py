@@ -17,13 +17,24 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ocr_url: str = "http://127.0.0.1:8001"
     default_llm_model: str = ""
-    database_path: Path = Field(default_factory=lambda: portable_root() / "database" / "catalog.sqlite")
+
+    # Writable directory contract:
+    # database/ = portable patient data only; config/ = machine settings;
+    # runtime/ = disposable/rebuildable indexes and caches.
+    data_path: Path = Field(default_factory=lambda: portable_root() / "database")
+    config_path: Path = Field(default_factory=lambda: portable_root() / "config")
+    runtime_path: Path = Field(default_factory=lambda: portable_root() / "runtime")
+    database_path: Path = Field(default_factory=lambda: portable_root() / "runtime" / "catalog.sqlite")
+
     model_import_path: Path = Field(default_factory=lambda: portable_root() / "models" / "llm")
     knowledge_path: Path = Field(default_factory=lambda: resource_root() / "knowledge")
     max_sanitized_image_mb: int = 25
 
     @model_validator(mode="after")
     def enforce_offline_llm_endpoint(self) -> "Settings":
+        self.data_path = portable_path(self.data_path)
+        self.config_path = portable_path(self.config_path)
+        self.runtime_path = portable_path(self.runtime_path)
         self.database_path = portable_path(self.database_path)
         self.model_import_path = portable_path(self.model_import_path)
         if not self.knowledge_path.is_absolute():

@@ -30,7 +30,10 @@ def metadata() -> str:
 
 
 def configure_machine(root: Path) -> None:
-    settings.database_path = root / "database" / "catalog.sqlite"
+    settings.data_path = root / "database"
+    settings.config_path = root / "config"
+    settings.runtime_path = root / "runtime"
+    settings.database_path = settings.runtime_path / "catalog.sqlite"
     settings.model_import_path = root / "models" / "llm"
 
 
@@ -49,7 +52,7 @@ def create_verified_patient(client: TestClient, code: str, value: str = "LEFT") 
     observation = client.post(
         f"/api/patients/{patient['id']}/observations",
         json={
-            "field_name": "laterality",
+            "field_name": "breast_laterality",
             "value": value,
             "confidence": "HIGH",
             "document_id": uploaded["id"],
@@ -57,6 +60,14 @@ def create_verified_patient(client: TestClient, code: str, value: str = "LEFT") 
     ).json()
     client.post(f"/api/observations/{observation['id']}/verify", json={"operator": "reviewer"})
     return patient
+
+
+def add_verified_tnm(client: TestClient, patient_id: int, value: str) -> None:
+    observation = client.post(
+        f"/api/patients/{patient_id}/observations",
+        json={"field_name": "clinical_stage", "value": value, "confidence": "HIGH"},
+    ).json()
+    client.post(f"/api/observations/{observation['id']}/verify", json={"operator": "reviewer"})
 
 
 def test_patient_directory_is_self_contained(client, tmp_path):
@@ -71,10 +82,15 @@ def test_patient_directory_is_self_contained(client, tmp_path):
     with sqlite3.connect(package / "patient.sqlite") as connection:
         assert connection.execute("SELECT patient_code FROM patients").fetchone()[0] == "1234567"
         assert connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] >= 2
+    assert not (tmp_path / "database" / "catalog.sqlite").exists()
+    assert not (tmp_path / "database" / "runtime_config.json").exists()
+    assert not (tmp_path / "database" / "instance.json").exists()
+    assert (tmp_path / "runtime" / "test.db").is_file()
+    assert (tmp_path / "config" / "instance.json").is_file()
     assert client.get(f"/api/patients/{patient['id']}").status_code == 200
 
 
-def test_new_patient_package_can_rebuild_catalog(tmp_path):
+def test_new_patient_package_rebuilds_catalog_automatically(tmp_path):
     machine_a = tmp_path / "machine-a"
     configure_machine(machine_a)
     with TestClient(app) as client:
@@ -85,20 +101,17 @@ def test_new_patient_package_can_rebuild_catalog(tmp_path):
     destination = machine_b / "database" / "patients" / "2345678"
     shutil.copytree(source, destination)
     configure_machine(machine_b)
+    assert not settings.database_path.exists()
     with TestClient(app) as client:
-        scan = client.get("/api/data-migration/scan").json()
-        assert [item["patient_code"] for item in scan["new"]] == ["2345678"]
-        imported = client.post(
-            "/api/data-migration/import",
-            json={"package_name": "2345678", "action": "IMPORT_NEW"},
-        )
-        assert imported.status_code == 200
+        # Startup scans database/patients and reconstructs the disposable catalog.
         patients = client.get("/api/patients").json()
         assert len(patients) == 1
+        assert patients[0]["patient_code"] == "2345678"
         detail = client.get(f"/api/patients/{patients[0]['id']}").json()
         assert detail["patient_code"] == "2345678"
         assert detail["observations"][0]["current_value"] == "LEFT"
         assert client.get(f"/api/documents/{detail['documents'][0]['id']}/image").status_code == 200
+        assert settings.database_path.is_file()
 
 
 def test_same_patient_verified_conflict_requires_review(tmp_path):
@@ -116,16 +129,36 @@ def test_same_patient_verified_conflict_requires_review(tmp_path):
         shutil.copytree(external, machine_b / "database" / "patients" / "3456789-from-machine-a")
         scan = client.get("/api/data-migration/scan").json()
         assert scan["conflicts"][0]["verified_conflicts"] == [
-            {"field_name": "laterality", "local_value": "RIGHT", "external_value": "LEFT"}
+            {"field_name": "breast_laterality", "local_value": "RIGHT", "external_value": "LEFT"}
         ]
         merged = client.post(
             "/api/data-migration/import",
             json={"package_name": "3456789-from-machine-a", "action": "MERGE"},
         ).json()
-        assert merged["conflicts"][0]["field_name"] == "laterality"
+        assert merged["conflicts"][0]["field_name"] == "breast_laterality"
         detail = client.get(f"/api/patients/{patient['id']}").json()
-        observation = detail["observations"][0]
+        observation = next(item for item in detail["observations"] if item["field_name"] == "breast_laterality")
         assert observation["current_value"] == "RIGHT"
         assert observation["status"] == "REVIEW_REQUIRED"
         assert {item["value"] for item in observation["candidate_values"]} == {"LEFT", "RIGHT"}
         assert client.get("/api/data-migration/scan").json()["conflicts"] == []
+
+
+def test_tnm_conflict_reports_master_only_not_derived_components(tmp_path):
+    machine_a = tmp_path / "machine-a"
+    configure_machine(machine_a)
+    with TestClient(app) as client:
+        patient_a = create_verified_patient(client, "4567890")
+        add_verified_tnm(client, patient_a["id"], "cT2N1M0")
+    external = tmp_path / "external-tnm"
+    shutil.copytree(machine_a / "database" / "patients" / "4567890", external)
+
+    machine_b = tmp_path / "machine-b"
+    configure_machine(machine_b)
+    with TestClient(app) as client:
+        patient_b = create_verified_patient(client, "4567890")
+        add_verified_tnm(client, patient_b["id"], "cT1N0M0")
+        shutil.copytree(external, machine_b / "database" / "patients" / "4567890-from-machine-a")
+        scan = client.get("/api/data-migration/scan").json()
+        fields = [item["field_name"] for item in scan["conflicts"][0]["verified_conflicts"]]
+        assert fields == ["clinical_stage"]

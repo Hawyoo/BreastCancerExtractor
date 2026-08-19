@@ -41,7 +41,31 @@ def test_windows_native_portable_build_is_onedir_and_reuses_core_app():
     assert 'uvicorn.run("app.main:app"' in launcher
     assert 'uvicorn.run("ocr.service:app"' in launcher
     assert "pyinstaller --noconfirm --clean BreastCancerExtractor.spec" in builder
-    assert "runtime\\ollama\\ollama.exe" in builder
+
+
+def test_windows_portable_separates_patient_data_config_and_runtime():
+    launcher = (ROOT / "app/native_launcher.py").read_text(encoding="utf-8")
+    builder = (ROOT / "scripts/build-portable.ps1").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'root / "database" / "patients"' in launcher
+    assert 'root / "config"' in launcher
+    assert 'root / "runtime" / "catalog.sqlite"' in launcher
+    assert '"database\\patients", "config", "runtime"' in builder
+    assert "database\\catalog.sqlite      → runtime\\catalog.sqlite" in readme
+    assert "患者资料只需要备份 `database\\`" in readme
+
+
+def test_windows_portable_ollama_is_optional():
+    builder = (ROOT / "scripts/build-portable.ps1").read_text(encoding="utf-8")
+    default_bat = (ROOT / "build-portable.bat").read_text(encoding="utf-8")
+    ollama_bat = (ROOT / "build-portable-with-ollama.bat").read_text(encoding="utf-8")
+
+    assert "[switch]$IncludeOllama" in builder
+    assert "if ($IncludeOllama)" in builder
+    assert "runtime\\ollama" in builder
+    assert "-IncludeOllama" not in default_bat
+    assert "-IncludeOllama" in ollama_bat
 
 
 def test_docker_runtime_mode_remains_explicit():
@@ -50,12 +74,16 @@ def test_docker_runtime_mode_remains_explicit():
     assert "RUNTIME_MODE: docker" in compose
     assert "http://ollama:11434" in compose
     assert "http://ocr:8001" in compose
+    assert "DATA_PATH: /data" in compose
+    assert "CONFIG_PATH: /config" in compose
+    assert "DATABASE_PATH: /runtime/catalog.sqlite" in compose
 
 
-def test_readme_leads_with_one_click_install():
+def test_readme_makes_windows_ollama_optional():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "最简单的安装方式：双击一个文件" in readme
-    assert "install.bat" in readme
+    assert "Ollama / 本地 AI 是可选项" in readme
+    assert "build-portable.bat" in readme
+    assert "build-portable-with-ollama.bat" in readme
 
 
 def test_stop_all_closes_automatically_without_pause():
