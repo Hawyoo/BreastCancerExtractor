@@ -29,6 +29,27 @@
     other: "其他",
   };
   const DIRECT_IDENTIFIER_FIELDS = new Set(["record_number", "contact"]);
+  const TNM_FIELDS = new Set(["clinical_stage", "pathological_stage"]);
+  const INTEGER_FIELD_KEYS = new Set(["menarche_age", "menopause_age"]);
+  const FIELD_LABEL_OVERRIDES = {
+    has_chronic_disease: "是否患慢性病",
+    chronic_disease: "慢性病（可多选）",
+    chronic_disease_other: "其他慢性病（请填写）",
+  };
+  const YES_NO_OPTIONS = [
+    {label: "是", value: "YES"},
+    {label: "否", value: "NO"},
+  ];
+  const MENOPAUSE_OPTIONS = [
+    ...YES_NO_OPTIONS,
+    {label: "不详", value: "UNKNOWN"},
+  ];
+  const CHRONIC_OPTIONS = [
+    {label: "高血压", value: "HYPERTENSION"},
+    {label: "糖尿病", value: "DIABETES"},
+    {label: "冠心病", value: "CORONARY_HEART_DISEASE"},
+    {label: "其他", value: "OTHER"},
+  ];
 
   function derivedField(key) {
     return [
@@ -39,6 +60,204 @@
 
   function groupLabel(group) {
     return GROUP_LABELS[group] || group || "其他";
+  }
+
+  function displayFieldLabel(key, fallback) {
+    return FIELD_LABEL_OVERRIDES[key] || fallback || key;
+  }
+
+  function parseMultiValue(value) {
+    const text = String(value ?? "").trim();
+    if (!text || text === "NA" || text === "NOT_APPLICABLE") return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map(item => String(item).trim()).filter(Boolean);
+    } catch (_) {}
+    return text
+      .replace(/[\[\]"']/g, "")
+      .split(/[,，;；|]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  function encodeMultiValue(values, options = CHRONIC_OPTIONS) {
+    const selected = new Set(values.map(item => String(item)));
+    return options.map(option => option.value).filter(value => selected.has(value)).join(",");
+  }
+
+  function isIntegerObservation(observation) {
+    return observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(observation?.field_name);
+  }
+
+  function currentPatientValue(key, observations, row) {
+    const observation = observations.get(key);
+    if (observation) return String(observation.current_value ?? "").trim();
+    const preview = row?.values?.[key];
+    return preview == null || preview === "NA" ? "" : String(preview).trim();
+  }
+
+  function inlineFieldVisible(key, observations, row) {
+    if (key === "chronic_disease") {
+      return currentPatientValue("has_chronic_disease", observations, row).toUpperCase() === "YES";
+    }
+    if (key === "chronic_disease_other") {
+      if (currentPatientValue("has_chronic_disease", observations, row).toUpperCase() !== "YES") return false;
+      return parseMultiValue(currentPatientValue("chronic_disease", observations, row)).includes("OTHER");
+    }
+    if (key === "menopause_age") {
+      return currentPatientValue("menopausal_status", observations, row).toUpperCase() === "YES";
+    }
+    return true;
+  }
+
+  function fieldInlineOptions(key, observation) {
+    if (key === "has_chronic_disease") return YES_NO_OPTIONS;
+    if (key === "menopausal_status") return MENOPAUSE_OPTIONS;
+    if (key === "chronic_disease") return CHRONIC_OPTIONS;
+    return Array.isArray(observation?.field_options) ? observation.field_options : [];
+  }
+
+  function createChoiceEditor(key, value, options, multiple = false) {
+    const wrapper = document.createElement("div");
+    wrapper.className = `inline-choice-editor${multiple ? " multiple" : ""}`;
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.value = value;
+    wrapper.appendChild(input);
+
+    const selected = multiple ? new Set(parseMultiValue(value)) : new Set([String(value ?? "")]);
+    const sync = () => {
+      if (multiple) {
+        const activeValues = [...wrapper.querySelectorAll("button.active")].map(button => button.dataset.value);
+        input.value = encodeMultiValue(activeValues, options);
+      } else {
+        input.value = wrapper.querySelector("button.active")?.dataset.value || "";
+      }
+    };
+
+    for (const option of options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "review-choice-option";
+      button.dataset.value = option.value;
+      button.textContent = option.label;
+      button.classList.toggle("active", selected.has(String(option.value)));
+      button.onclick = () => {
+        if (multiple) button.classList.toggle("active");
+        else wrapper.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === button));
+        sync();
+      };
+      wrapper.appendChild(button);
+    }
+    sync();
+    return {element: wrapper, input};
+  }
+
+  function createInlineEditor(column, observation, value, readonly) {
+    const key = column.key;
+    const options = fieldInlineOptions(key, observation);
+    if (!readonly && key === "chronic_disease") {
+      return createChoiceEditor(key, value, options, true);
+    }
+    if (!readonly && ["has_chronic_disease", "menopausal_status"].includes(key)) {
+      return createChoiceEditor(key, value, options, false);
+    }
+    if (!readonly && (observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(key))) {
+      const input = document.createElement("input");
+      input.className = "patient-review-inline-input";
+      input.type = "number";
+      input.step = "1";
+      input.min = "0";
+      input.inputMode = "numeric";
+      const text = String(value ?? "").trim();
+      input.value = /^\d+$/.test(text) ? text : "";
+      input.placeholder = text && !/^\d+$/.test(text) ? `原值“${text}”无效，请输入数字` : "未填写，直接输入数字";
+      return {element: input, input};
+    }
+
+    const input = document.createElement("textarea");
+    input.className = "patient-review-inline-input";
+    input.rows = 1;
+    input.value = value;
+    input.placeholder = "未填写，直接输入";
+    input.readOnly = readonly;
+    if (readonly) input.title = derivedField(key) ? "自动整理字段，只读" : "标识字段不在此处修改";
+    return {element: input, input};
+  }
+
+  // Main sequential field review: multiselect must really be multi-select.
+  const originalRenderReviewChoices = typeof renderReviewChoices === "function" ? renderReviewChoices : null;
+  if (originalRenderReviewChoices) {
+    renderReviewChoices = observation => {
+      if (observation?.field_type !== "multiselect") {
+        originalRenderReviewChoices(observation);
+        return;
+      }
+      const container = document.querySelector("#review-choice-options");
+      const valueField = document.querySelector("#review-current-value");
+      const valueLabel = document.querySelector("#review-current-value-label");
+      const options = Array.isArray(observation.field_options) ? observation.field_options : [];
+      container.innerHTML = "";
+      container.hidden = !options.length;
+      valueLabel.hidden = Boolean(options.length);
+      const selected = new Set(parseMultiValue(valueField.value));
+      for (const option of options) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "review-choice-option";
+        button.textContent = option.label;
+        button.dataset.value = option.value;
+        button.classList.toggle("active", selected.has(String(option.value)));
+        button.onclick = () => {
+          button.classList.toggle("active");
+          const active = [...container.querySelectorAll(".review-choice-option.active")].map(item => item.dataset.value);
+          valueField.value = encodeMultiValue(active, options);
+        };
+        container.appendChild(button);
+      }
+    };
+  }
+
+  // Only TNM fields should display the TNM inference-basis box. Menopause and
+  // other inferred fields may carry provenance, but must not show a TNM panel.
+  const originalRenderFieldReview = typeof renderFieldReview === "function" ? renderFieldReview : null;
+  if (originalRenderFieldReview) {
+    renderFieldReview = () => {
+      originalRenderFieldReview();
+      const observation = typeof selectedObservation === "function" ? selectedObservation() : null;
+      if (!observation) return;
+
+      const label = document.querySelector("#review-field-name");
+      if (label) label.textContent = displayFieldLabel(observation.field_name, observation.field_label || observation.field_name);
+
+      const basisBox = document.querySelector("#review-inference-basis");
+      if (basisBox && !TNM_FIELDS.has(observation.field_name)) {
+        basisBox.hidden = true;
+        basisBox.innerHTML = "";
+      }
+
+      const valueField = document.querySelector("#review-current-value");
+      const saveButton = document.querySelector("#save-field-edit");
+      const verifyButton = document.querySelector("#verify-field");
+      if (!valueField || !saveButton || !verifyButton) return;
+      valueField.inputMode = isIntegerObservation(observation) ? "numeric" : "text";
+      valueField.placeholder = isIntegerObservation(observation) ? "请输入数字" : "";
+
+      if (isIntegerObservation(observation)) {
+        const current = String(valueField.value ?? "").trim();
+        if (current && !/^\d+$/.test(current)) {
+          valueField.value = "";
+          valueField.placeholder = `AI原值“${current}”不是数字，请人工填写`;
+        }
+        const updateNumericButtons = () => {
+          const valid = /^\d+$/.test(valueField.value.trim());
+          saveButton.disabled = !valid;
+          verifyButton.disabled = !valid;
+        };
+        valueField.oninput = updateNumericButtons;
+        updateNumericButtons();
+      }
+    };
   }
 
   function openInlineDialog() {
@@ -67,9 +286,12 @@
 
   async function saveInlineField(column, observation, input, button) {
     if (!state.patient) return;
-    const value = input.value.trim();
+    const value = String(input.value ?? "").trim();
     const oldValue = String(observation?.current_value ?? "").trim();
-    if (!value) return toast("请输入字段内容");
+    if (!value) return toast(column.key === "chronic_disease" ? "请至少选择一种慢性病" : "请输入字段内容");
+    if ((observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(column.key)) && !/^\d+$/.test(value)) {
+      return toast("该字段只能填写数字");
+    }
     if (observation && value === oldValue) return toast("字段值没有变化");
 
     button.disabled = true;
@@ -125,15 +347,17 @@
 
     body.innerHTML = "";
     for (const [group, columns] of groups) {
+      const visibleColumns = columns.filter(column => inlineFieldVisible(column.key, observations, row));
+      if (!visibleColumns.length) continue;
       const heading = document.createElement("tr");
       heading.className = "patient-review-group-row";
       heading.innerHTML = `<th colspan="3">${escapeHtml(groupLabel(group))}</th>`;
       body.appendChild(heading);
 
-      for (const column of columns) {
+      for (const column of visibleColumns) {
         const observation = observations.get(column.key);
         const preview = row.values[column.key] ?? "";
-        const value = observation ? String(observation.current_value ?? "") : String(preview ?? "");
+        const value = observation ? String(observation.current_value ?? "") : String(preview === "NA" ? "" : preview ?? "");
         const status = row.statuses[column.key] || "EMPTY";
         const readonly = DIRECT_IDENTIFIER_FIELDS.has(column.key) || derivedField(column.key);
 
@@ -142,17 +366,11 @@
         tr.dataset.fieldKey = column.key;
 
         const fieldCell = document.createElement("th");
-        fieldCell.innerHTML = `<strong>${escapeHtml(column.label)}</strong><small>${escapeHtml(statusText(status))}</small>`;
+        fieldCell.innerHTML = `<strong>${escapeHtml(displayFieldLabel(column.key, column.label))}</strong><small>${escapeHtml(statusText(status))}</small>`;
 
         const valueCell = document.createElement("td");
-        const input = document.createElement("textarea");
-        input.className = "patient-review-inline-input";
-        input.rows = 1;
-        input.value = value;
-        input.placeholder = "未填写，直接输入";
-        input.readOnly = readonly;
-        if (readonly) input.title = derivedField(column.key) ? "自动整理字段，只读" : "标识字段不在此处修改";
-        valueCell.appendChild(input);
+        const editor = createInlineEditor(column, observation, value, readonly);
+        valueCell.appendChild(editor.element);
 
         const actionCell = document.createElement("td");
         actionCell.className = "review-row-actions";
@@ -161,7 +379,7 @@
           saveButton.type = "button";
           saveButton.className = "tool patient-review-save";
           saveButton.textContent = observation ? "保存" : "填写";
-          saveButton.onclick = () => saveInlineField(column, observation, input, saveButton);
+          saveButton.onclick = () => saveInlineField(column, observation, editor.input, saveButton);
           actionCell.appendChild(saveButton);
         } else {
           const note = document.createElement("small");
@@ -189,7 +407,7 @@
       requestAnimationFrame(() => {
         const target = [...body.querySelectorAll("tr[data-field-key]")].find(item => item.dataset.fieldKey === focusKey);
         target?.scrollIntoView({behavior: "smooth", block: "center"});
-        target?.querySelector("textarea:not([readonly])")?.focus({preventScroll: true});
+        target?.querySelector("textarea:not([readonly]),input:not([readonly]):not([type=hidden])")?.focus({preventScroll: true});
       });
     }
   }
