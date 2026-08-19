@@ -1,11 +1,19 @@
 (() => {
   // This module is loaded after enhancements.js/derived_fields.js. Keep the
-  // post-review UI follow-up independent of whether Windows shutdown control is
-  // available (e.g. Docker still gets the inline review layout).
+  // ROI and post-review UI follow-ups independent of whether Windows shutdown
+  // control is available (e.g. Docker still gets the same editor behavior).
+  if (!document.querySelector('script[data-bce-atomic-roi="1"]')) {
+    const roiScript = document.createElement("script");
+    roiScript.src = "/atomic_roi.js";
+    roiScript.async = false;
+    roiScript.dataset.bceAtomicRoi = "1";
+    document.body.appendChild(roiScript);
+  }
+
   if (!document.querySelector('script[data-bce-review-inline="1"]')) {
     const reviewScript = document.createElement("script");
     reviewScript.src = "/review_inline.js";
-    reviewScript.defer = true;
+    reviewScript.async = false;
     reviewScript.dataset.bceReviewInline = "1";
     document.body.appendChild(reviewScript);
   }
