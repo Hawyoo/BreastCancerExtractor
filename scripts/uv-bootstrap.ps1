@@ -1,5 +1,3 @@
-Set-StrictMode -Version Latest
-
 function Initialize-ProjectUv {
     [CmdletBinding()]
     param(
