@@ -9,6 +9,7 @@ from app.derived_fields import is_derived_field
 PatientStatus = Literal["UNPROCESSED", "AI_PROCESSED", "REVIEW_REQUIRED", "VERIFIED"]
 Confidence = Literal["LOW", "MEDIUM", "HIGH", "VERIFIED"]
 
+ADDITIONAL_LESION_FIELD_PREFIX = "additional_malignant_lesion:"
 ADDITIONAL_LESION_SCHEMA = "BCE_ADDITIONAL_MALIGNANT_LESION_V1"
 MALIGNANCY_POSITIVE_PATTERN = re.compile(
     r"(乳腺癌|癌灶|癌组织|癌细胞|浸润性[^，。;；\n]{0,20}癌|原位癌|恶性病灶|恶性肿瘤|明确恶性|"
@@ -22,8 +23,8 @@ MALIGNANCY_NEGATIVE_PATTERN = re.compile(
 )
 
 
-def validate_additional_lesion_value(value: str | None) -> str | None:
-    """Validate the lightweight additional-lesion JSON when that schema is used.
+def validate_additional_lesion_value(value: str | None, *, require_schema: bool = False) -> str | None:
+    """Validate a lightweight additional-lesion JSON payload.
 
     Additional lesions are a rare exception layer stored as ordinary observations,
     so they travel with the existing audit and patient-package machinery. The
@@ -31,7 +32,13 @@ def validate_additional_lesion_value(value: str | None) -> str | None:
     malignant and must state whether the patient qualified because of bilateral
     disease and/or multiple malignant lesions on imaging.
     """
-    if value is None or ADDITIONAL_LESION_SCHEMA not in value:
+    if value is None:
+        if require_schema:
+            raise ValueError("Additional lesion value is required")
+        return value
+    if ADDITIONAL_LESION_SCHEMA not in value:
+        if require_schema:
+            raise ValueError("Additional lesion fields require the BCE additional-lesion schema")
         return value
     try:
         payload = json.loads(value)
@@ -116,6 +123,10 @@ class ObservationCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_inference_provenance(self) -> "ObservationCreate":
+        if self.field_name.startswith(ADDITIONAL_LESION_FIELD_PREFIX):
+            validate_additional_lesion_value(self.value, require_schema=True)
+            if self.source_mode != "RECORDED":
+                raise ValueError("Additional lesions are human-recorded exceptions, not AI inferred values")
         if self.source_mode == "INFERRED":
             if not self.inference_basis or not self.ruleset_version:
                 raise ValueError("Inferred values require inference_basis and ruleset_version")
