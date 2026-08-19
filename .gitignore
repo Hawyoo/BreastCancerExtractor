@@ -21,6 +21,7 @@ outputs/
 
 # Python
 .venv/
+.uv-local/
 .uv-cache/
 .native-cache/
 .docker-cli/

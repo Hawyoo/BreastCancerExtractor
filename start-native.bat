@@ -1,5 +1,5 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-uv run --group native python -m app.native_launcher
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-native.ps1"
 if errorlevel 1 pause

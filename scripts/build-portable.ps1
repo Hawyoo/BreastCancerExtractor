@@ -8,7 +8,9 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $ProjectRoot
-$env:UV_CACHE_DIR = Join-Path $ProjectRoot ".uv-cache"
+
+. (Join-Path $PSScriptRoot "uv-bootstrap.ps1")
+$UvExe = Initialize-ProjectUv -ProjectRoot $ProjectRoot
 
 function Write-Step([int]$Number, [string]$Text) {
     Write-Host ""
@@ -16,7 +18,7 @@ function Write-Step([int]$Number, [string]$Text) {
 }
 
 Write-Step 1 "Sync Windows Native and packaging dependencies"
-uv sync --group native
+& $UvExe sync --group native
 if ($LASTEXITCODE -ne 0) { throw "uv sync --group native failed" }
 
 Write-Step 2 "Warm up and verify PaddleOCR inference"
@@ -25,13 +27,13 @@ New-Item -ItemType Directory -Force -Path $NativeCache | Out-Null
 $env:PADDLE_PDX_CACHE_HOME = $NativeCache
 $env:USERPROFILE = Join-Path $ProjectRoot ".native-cache\paddle-home"
 $env:PADDLE_HOME = Join-Path $env:USERPROFILE ".cache\paddle"
-uv run --group native python scripts/warm-ocr.py
+& $UvExe run --group native python scripts/warm-ocr.py
 if ($LASTEXITCODE -ne 0) {
     throw "PaddleOCR inference warm-up failed. If a cached model is incomplete, delete .native-cache\paddlex-cache\official_models and rebuild while online."
 }
 
 Write-Step 3 "Build the PyInstaller onedir distribution"
-uv run --group native pyinstaller --noconfirm --clean BreastCancerExtractor.spec
+& $UvExe run --group native pyinstaller --noconfirm --clean BreastCancerExtractor.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
 $PortableRoot = Join-Path $ProjectRoot "dist\BreastCancerExtractor"
