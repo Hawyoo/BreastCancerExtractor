@@ -1,0 +1,84 @@
+version: 1.0.0
+title: 附加恶性病灶低频例外策略
+
+purpose: >-
+  BCE默认仍按“一名患者 + 一套核心肿瘤字段”工作。只有少数双侧或多发明确恶性乳腺癌病例，
+  才启用附加病灶层，用于保存第二/更多病灶的病灶特异性信息；患者人口学、既往史、手术、
+  系统治疗和随访等患者级信息不复制。
+
+eligibility:
+  any_of:
+    - {field: breast_laterality, equals: BILATERAL, meaning: 偏侧性明确为双侧乳腺癌}
+    - {field: pre_mmg_single_lesion, equals: MULTIPLE, meaning: 影像学总体明确存在多个恶性病灶}
+  note: >-
+    pre_mmg_single_lesion是历史稳定key。为兼容既有患者数据不改key；运行时标签和分组已提升为
+    “影像学恶性病灶是否多发 / pretreatment_imaging”，超声、钼靶、MRI均可提供证据。
+
+malignancy_gate:
+  required: true
+  rule: >-
+    eligibility只决定“是否允许出现附加病灶入口”，绝不自动创建病灶。每个附加病灶还必须有
+    针对该病灶的明确恶性依据，例如乳腺癌、癌灶、浸润性癌、原位癌、恶性病灶/肿瘤、
+    carcinoma/malignant或BI-RADS 6等明确文字。
+  forbidden_as_positive_evidence:
+    - 多发良性结节
+    - 囊肿
+    - 纤维腺瘤
+    - 增生结节
+    - 倾向良性或考虑良性
+    - 未见/无/排除恶性
+  principle: 多个良性肿块永远不能因为“数量多”而建立附加病灶。
+
+imaging_multiplicity:
+  stable_key: pre_mmg_single_lesion
+  runtime_label: 影像学恶性病灶是否多发
+  runtime_group: pretreatment_imaging
+  values: [SINGLE, MULTIPLE]
+  source_documents: [ULTRASOUND, MAMMOGRAPHY, MRI]
+  multiple_definition: 只有明确至少两个恶性/乳腺癌目标病灶时才可编码MULTIPLE。
+  benign_multiple_is_multiple: false
+
+storage:
+  strategy: observation_exception_layer
+  field_prefix: 'additional_malignant_lesion:'
+  value_schema: BCE_ADDITIONAL_MALIGNANT_LESION_V1
+  reason: >-
+    不新增clinical_entities或额外数据库表；复用现有observations、audit_log和Patient Package，
+    保持低频功能对普通病例零影响。每个附加病灶是一条独立、人工确认后的特殊observation。
+  main_csv_behavior: 不加入当前一患者一行主宽表；附加病灶保留在患者SQLite和事后回顾界面。
+
+lesion_specific_fields:
+  - laterality
+  - location
+  - size_text
+  - pathology_type
+  - er
+  - pr
+  - her2
+  - ki67
+  - other_ihc
+  - malignancy_basis
+  - source_document_id
+
+patient_level_fields_not_repeated:
+  - demographics
+  - reproductive_history
+  - medical_history
+  - family_history
+  - lifestyle
+  - surgery
+  - neoadjuvant
+  - adjuvant_treatment
+  - palliative_treatment
+  - followup
+
+bilateral_single_rule: >-
+  如果仅由BILATERAL触发、影像学恶性病灶并未标记MULTIPLE，则默认最多建立1个活动的附加病灶，
+  现有核心字段代表主病灶，附加病灶代表另一侧。若确实还存在更多恶性病灶，应先将影像学总体
+  多发状态确认成MULTIPLE再继续添加。
+
+safety:
+  - AI抽取字段白名单中不包含additional_malignant_lesion前缀，AI不能自行建立附加病灶。
+  - 附加病灶由人工在患者事后回顾界面建立，并立即人工确认。
+  - 特殊JSON payload在Pydantic层再次校验malignancy_confirmed、malignancy_basis和trigger_basis。
+  - 停用病灶不物理删除，active=false保留审计历史。
