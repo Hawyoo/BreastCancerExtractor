@@ -25,7 +25,10 @@ function Initialize-ProjectUv {
         $env:UV_UNMANAGED_INSTALL = $UvBinDir
         try {
             $installer = Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1"
-            Invoke-Expression $installer
+            $installOutput = Invoke-Expression $installer
+            if ($installOutput) {
+                $installOutput | ForEach-Object { Write-Host $_ }
+            }
         }
         catch {
             throw "Failed to install project-local uv: $($_.Exception.Message)"
@@ -36,10 +39,14 @@ function Initialize-ProjectUv {
         throw "uv installer completed, but uv.exe was not found at $UvExe"
     }
 
-    & $UvExe --version
-    if ($LASTEXITCODE -ne 0) {
+    # Capture version output instead of emitting it to the success pipeline. Otherwise callers that
+    # assign this function's return value also capture the version string and try to execute it as a path.
+    $UvVersion = & $UvExe --version
+    $UvExitCode = $LASTEXITCODE
+    if ($UvExitCode -ne 0) {
         throw "Project-local uv exists but could not be executed."
     }
+    Write-Host "Using $UvVersion from $UvExe" -ForegroundColor DarkGray
 
-    return $UvExe
+    return [string]$UvExe
 }
