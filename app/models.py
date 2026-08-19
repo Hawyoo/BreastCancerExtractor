@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.derived_fields import is_derived_field
+
 PatientStatus = Literal["UNPROCESSED", "AI_PROCESSED", "REVIEW_REQUIRED", "VERIFIED"]
 Confidence = Literal["LOW", "MEDIUM", "HIGH", "VERIFIED"]
 
@@ -53,6 +55,13 @@ class ObservationCreate(BaseModel):
     model_digest: str | None = None
     prompt_version: str | None = None
     ocr_version: str | None = None
+
+    @field_validator("field_name")
+    @classmethod
+    def derived_fields_are_system_owned(cls, value: str) -> str:
+        if is_derived_field(value):
+            raise ValueError("Derived fields are read-only; edit and verify the complete source field instead")
+        return value
 
     @model_validator(mode="after")
     def validate_inference_provenance(self) -> "ObservationCreate":
