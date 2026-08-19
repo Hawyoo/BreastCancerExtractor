@@ -15,6 +15,13 @@
     quickImportScript.src = "/quick_import.js";
     quickImportScript.async = false;
     quickImportScript.dataset.bceQuickImport = "1";
+    quickImportScript.onload = () => {
+      // app.js originally assigns the exit button a direct function reference.
+      // Rebind it after quick_import.js wraps leavePatient so an active batch
+      // cannot be abandoned without the quick-import cancellation guard.
+      const exitButton = document.querySelector("#exit-patient");
+      if (exitButton && typeof leavePatient === "function") exitButton.onclick = leavePatient;
+    };
     document.body.appendChild(quickImportScript);
   }
 
