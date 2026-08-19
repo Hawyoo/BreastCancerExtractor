@@ -3,6 +3,7 @@ from functools import lru_cache
 import yaml
 
 from app.config import settings
+from app.derived_fields import expand_questionnaire_catalog
 
 DOCUMENT_GROUPS = {
     "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
@@ -43,7 +44,7 @@ DOCUMENT_FIELD_INCLUSIONS = {
 def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return payload["fields"]
+    return expand_questionnaire_catalog(payload["fields"])
 
 
 @lru_cache
@@ -67,7 +68,10 @@ def questionnaire_option_index() -> dict[str, list[dict[str, str]]]:
 
 @lru_cache
 def field_catalog() -> list[dict]:
-    return [field for field in questionnaire_catalog() if field.get("capture") != "manual_restricted"]
+    return [
+        field for field in questionnaire_catalog()
+        if field.get("capture") not in {"manual_restricted", "derived_readonly"}
+    ]
 
 
 @lru_cache
@@ -82,6 +86,8 @@ def questionnaire_field_index() -> dict[str, dict]:
             "allowed_values": field.get("values"),
             "field_options": option_index.get(field["key"], []),
             "depends_on": field.get("depends_on"),
+            "capture": field.get("capture"),
+            "derived_from": field.get("derived_from"),
         }
         for index, field in enumerate(questionnaire_catalog())
     }
