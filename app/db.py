@@ -1,4 +1,5 @@
 import json
+import shutil
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
+from app.derived_fields import refresh_derived_observations
 
 
 def utc_now() -> str:
@@ -166,10 +168,44 @@ CREATE INDEX IF NOT EXISTS idx_audit_patient ON audit_log(patient_id);
 """
 
 
+def _move_with_sidecars(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), str(destination))
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{source}{suffix}")
+        if sidecar.exists():
+            shutil.move(str(sidecar), str(Path(f"{destination}{suffix}")))
+
+
+def _migrate_legacy_catalog(target: Path) -> None:
+    legacy = settings.data_path / "catalog.sqlite"
+    try:
+        if legacy.resolve() == target.resolve() or not legacy.is_file():
+            return
+    except OSError:
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        _move_with_sidecars(legacy, target)
+        return
+
+    # A runtime catalog already exists. Preserve the old cache outside
+    # database/ rather than silently deleting a possibly newer legacy file.
+    index = 1
+    backup = settings.runtime_path / "catalog.legacy.sqlite"
+    while backup.exists():
+        index += 1
+        backup = settings.runtime_path / f"catalog.legacy.{index}.sqlite"
+    _move_with_sidecars(legacy, backup)
+
+
 def init_db(path: Path | None = None) -> None:
     db_path = path or settings.database_path
+    if path is None:
+        _migrate_legacy_catalog(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
         connection.executescript(SCHEMA)
         connection.execute("DROP TRIGGER IF EXISTS sync_document_delete")
         connection.execute("DROP TRIGGER IF EXISTS sync_observation_delete")
@@ -186,6 +222,8 @@ def init_db(path: Path | None = None) -> None:
             """INSERT INTO patient_sync_state(patient_id,dirty)
                SELECT id,1 FROM patients WHERE id NOT IN (SELECT patient_id FROM patient_sync_state)"""
         )
+        refresh_derived_observations(connection)
+        connection.commit()
 
 
 @contextmanager
@@ -195,8 +233,13 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
     try:
+        refresh_derived_observations(connection)
         yield connection
+        refresh_derived_observations(connection)
         connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
