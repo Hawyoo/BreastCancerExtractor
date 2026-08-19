@@ -85,8 +85,6 @@ build-portable.bat
 
 ### 可选本地 AI
 
-有两种方式：
-
 **方式 A：系统 Ollama（推荐）**
 
 单独安装并启动 Ollama，程序会连接：
@@ -111,32 +109,34 @@ Ollama runtime 才会被复制到：
 runtime\ollama\
 ```
 
-### Windows 数据目录
-
-所有可写数据默认保存在 exe 同级目录：
+### Windows 目录约定
 
 ```text
 BreastCancerExtractor\
 ├─ BreastCancerExtractor.exe
-├─ database\
+├─ database\                 # 只保存患者数据，可整体搬运和拼接
+│  └─ patients\
+│     └─ <7位病案号>\
+│        ├─ patient.sqlite
+│        ├─ manifest.json
+│        └─ sanitized\
+├─ config\                   # 本机设置：runtime_config.json、instance.json
+├─ runtime\                  # 可重建索引/缓存：catalog.sqlite、OCR缓存等
 ├─ models\llm\
 ├─ local_knowledge\
-├─ logs\
-└─ runtime\
+└─ logs\
 ```
 
-患者数据：
+**患者资料只需要备份 `database\`。** `runtime\catalog.sqlite` 只是可重建索引，删除后程序会从 `database\patients\*\patient.sqlite` 自动恢复患者总索引。
+
+把另一台电脑中不同病案号的患者目录直接复制进 `database\patients\`，下次启动会自动纳入本机索引。相同病案号若内容不同不会静默覆盖，应通过患者目录冲突流程处理。
+
+旧版本首次启动会自动迁移：
 
 ```text
-database\patients\<病案号>\
-```
-
-升级或迁移前建议备份：
-
-```text
-database\
-models\
-local_knowledge\
+database\catalog.sqlite      → runtime\catalog.sqlite
+database\runtime_config.json → config\runtime_config.json
+database\instance.json       → config\instance.json
 ```
 
 详细说明：[`docs/WINDOWS_PORTABLE.md`](docs/WINDOWS_PORTABLE.md)
@@ -179,7 +179,7 @@ stop-all.bat
 docker compose up -d --build
 ```
 
-Docker 版 Ollama 模型可通过：
+Docker 版同样把 `database/`、`config/`、`runtime/` 分开挂载。Ollama 模型可通过：
 
 ```powershell
 docker compose exec ollama ollama pull qwen3:8b
@@ -210,10 +210,48 @@ OCR
 ↓
 人工补充 / 修改 / 确认
 ↓
+确认后自动整理只读派生字段
+↓
 患者级数据预览与导出
 ```
 
 切换患者后，当前 OCR / AI 前端处理列表会清空，避免不同患者任务混在一起。
+
+---
+
+# TNM 与影像尺寸
+
+当前项目**重点保存完整 cTNM/ycTNM 和 pTNM/ypTNM，不保存 AJCC Stage Group**。
+
+完整 TNM 字符串是唯一可编辑主字段。例如：
+
+```text
+cT2N1M0
+pT1cN0M0
+```
+
+人工确认完整 TNM 后，系统自动生成只读字段：
+
+```text
+cT2 | cN1 | cM0
+pT1c | pN0 | pM0
+```
+
+这些拆分字段用于患者回顾、数据总览和结构化导出，**不能单独修改**；若有错误，应修改完整 TNM 主字段并重新确认，随后自动重算。
+
+影像尺寸采用相同逻辑。完整表达例如：
+
+```text
+32×18×15 mm
+```
+
+作为可编辑主字段保留；人工确认后按原文顺序自动产生 3 个只读径线字段：
+
+```text
+32 | 18 | 15
+```
+
+若原文只有 `32×18 mm`，第 3 径保持空白，不复制、不臆测。cm 会在派生尺寸中统一换算为 mm。
 
 ---
 
@@ -227,8 +265,10 @@ OCR
 - 无 Ollama 时仅 OCR 模式；
 - AI 字段人工修改与手动补充；
 - 患者回顾侧栏，可随时重新查看来源图片；
+- 完整 TNM / 影像尺寸人工确认后自动生成只读拆分字段；
 - 人工确认与审计留痕；
 - 患者级宽表预览与 CSV 导出；
+- 可搬运患者数据包与可重建 runtime catalog；
 - Windows Portable 与 Docker Compose。
 
 ---
@@ -292,17 +332,28 @@ models\llm\
 
 ```text
 database\patients\<7位病案号>\
+├─ patient.sqlite
+├─ manifest.json
+└─ sanitized\
 ```
 
-不同电脑之间可复制完整患者目录，然后在首页使用“扫描患者目录”。如果目标电脑已经存在同一病案号，请使用软件提供的冲突处理流程，不要直接覆盖。
+`database/` 是患者数据的便携边界。不同电脑之间直接复制不同病案号目录即可；启动时会自动把新增患者加入 `runtime/catalog.sqlite`。同一病案号存在不同内容时不要直接覆盖，应保留两个目录并使用冲突处理。
 
-建议备份：
+患者数据备份只需：
 
 ```text
 database\
+```
+
+如需保留本机模型选择等设置，可额外备份：
+
+```text
+config\
 models\llm\
 local_knowledge\
 ```
+
+`runtime/` 不需要备份。
 
 ---
 
@@ -342,7 +393,7 @@ build-portable-with-ollama.bat
 
 # Git 安全
 
-`.gitignore` 已排除患者数据、数据库、模型、日志、GGUF、离线镜像和本机配置等内容。
+`.gitignore` 已排除患者数据、`config/`、`runtime/`、模型、日志、GGUF、离线镜像和本机配置等内容。
 
 提交前请确认不存在：
 
