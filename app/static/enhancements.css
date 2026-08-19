@@ -5,9 +5,33 @@
 .patient-review-sidepanel .patient-review-table-shell{height:calc(100% - 190px);overflow:auto;padding:0 12px 16px}
 .patient-review-sidepanel .patient-review-table{font-size:12px}
 .patient-review-sidepanel .patient-review-table th{min-width:130px}
-.review-row-actions{min-width:122px}.review-row-actions .tool{display:block;width:100%;margin:3px 0;padding:5px 8px;font-size:11px}
+.review-row-actions{min-width:92px}.review-row-actions .tool{display:block;width:100%;margin:3px 0;padding:5px 8px;font-size:11px}
 .manual-field-tools{padding:10px 16px;border-bottom:1px solid var(--border,#d9dee7);background:var(--muted-panel,#f7f9fc)}
 .manual-field-tools>strong{display:block;margin-bottom:8px}.manual-field-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(120px,1fr) auto;gap:8px}.manual-field-row select,.manual-field-row input{min-width:0}.manual-field-tools small{display:block;margin-top:6px;opacity:.72}
+
+/* Completed-patient review is docked under the left audit area, not over the workspace. */
+.patient-review-inline[open]{position:static!important;inset:auto!important;display:block;width:100%;max-width:none;height:auto;max-height:min(58vh,620px);margin:16px 0 0;padding:0;border:1px solid var(--line,#d9dee7);border-radius:12px;box-shadow:none;overflow:hidden;background:var(--panel,#fff)}
+.patient-review-inline::backdrop{display:none}
+.patient-review-inline .patient-review-dialog-header{position:static;padding:10px 10px 8px;border-bottom:1px solid var(--line,#d9dee7)}
+.patient-review-inline .patient-review-dialog-header h2{margin:2px 0 0;font-size:15px;line-height:1.25}
+.patient-review-inline .patient-review-dialog-header .eyebrow{display:none}
+.patient-review-inline .manual-field-tools{display:none!important}
+.patient-review-inline .patient-review-table-shell{height:auto;max-height:min(48vh,520px);overflow:auto;padding:0}
+.patient-review-inline .patient-review-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px}
+.patient-review-inline .patient-review-table thead th{position:sticky;top:0;z-index:3;padding:6px;background:var(--mint,#eef5f1);border-bottom:1px solid var(--line,#d9dee7);text-align:left}
+.patient-review-inline .patient-review-table thead th:nth-child(1){width:31%}
+.patient-review-inline .patient-review-table thead th:nth-child(2){width:45%}
+.patient-review-inline .patient-review-table thead th:nth-child(3){width:24%}
+.patient-review-inline .patient-review-table th,.patient-review-inline .patient-review-table td{min-width:0;padding:6px;vertical-align:top;border-bottom:1px solid var(--line,#d9dee7);overflow-wrap:anywhere}
+.patient-review-inline .patient-review-inline-row>th strong,.patient-review-inline .patient-review-inline-row>th small{display:block}
+.patient-review-inline .patient-review-inline-row>th small{margin-top:2px;color:var(--muted,#66736d);font-size:10px;font-weight:400}
+.patient-review-inline .patient-review-group-row th{padding:6px 8px;color:var(--green-dark,#174737);background:var(--paper,#f6f4ef);font-size:11px;font-weight:700}
+.patient-review-inline-input{display:block;width:100%;min-height:30px;max-height:76px;resize:vertical;color:var(--ink);border:1px solid var(--line,#d9dee7);border-radius:7px;padding:5px 6px;background:var(--control,#fff);font:inherit;line-height:1.35}
+.patient-review-inline-input[readonly]{opacity:.72;background:var(--paper,#f6f4ef)}
+.patient-review-inline .review-row-actions{min-width:0}
+.patient-review-inline .review-row-actions .tool{width:100%;margin:0 0 4px;padding:5px 4px;font-size:10px}
+.patient-review-inline .derived-readonly-note{display:block;padding:5px 0;color:var(--muted,#66736d);font-size:10px;text-align:center}
+
 html[data-ai-disconnected="true"] #bulk-ai,html[data-ai-disconnected="true"] .run-ai{opacity:.5;cursor:not-allowed}
 #cancel-raw-upload{margin-left:auto}
-@media (max-width:900px){.patient-review-sidepanel[open]{width:calc(100vw - 24px);inset:70px 12px 12px 12px}.manual-field-row{grid-template-columns:1fr}.patient-review-sidepanel .patient-review-table-shell{height:calc(100% - 260px)}}
+@media (max-width:900px){.patient-review-sidepanel[open]{width:calc(100vw - 24px);inset:70px 12px 12px 12px}.manual-field-row{grid-template-columns:1fr}.patient-review-sidepanel .patient-review-table-shell{height:calc(100% - 260px)}.patient-review-inline[open]{max-height:55vh}.patient-review-inline .patient-review-table-shell{max-height:45vh}}
