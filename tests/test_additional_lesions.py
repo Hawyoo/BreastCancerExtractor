@@ -22,7 +22,8 @@ def lesion_payload(*, basis: str, triggers: list[str] | None = None) -> str:
             "trigger_basis": triggers or ["MULTIPLE"],
             "laterality": "LEFT",
             "location": "10点钟",
-            "size_text": "18×12 mm",
+            "size_text": "超声18×12 mm；MRI 20×14 mm",
+            "imaging_detail": "超声10点钟18×12 mm；MRI同部位20×14 mm",
             "er": "POSITIVE",
         },
         ensure_ascii=False,
@@ -46,6 +47,13 @@ def test_all_breast_imaging_documents_can_extract_malignant_multiplicity(documen
     assert MULTIPLICITY_FIELD in allowed
     assert "多个良性结节" in prompt
     assert "绝不能据此输出MULTIPLE" in prompt
+
+
+def test_imaging_multiplicity_inclusion_does_not_open_the_whole_general_imaging_group():
+    for document_type in ("ULTRASOUND", "MAMMOGRAPHY", "MRI"):
+        _, allowed = extraction_prompt(document_type, "test")
+        assert MULTIPLICITY_FIELD in allowed
+        assert "other_pretreatment_imaging" not in allowed
 
 
 def test_ai_field_catalog_does_not_contain_additional_lesion_prefix():
@@ -72,6 +80,16 @@ def test_explicit_malignancy_is_required_for_additional_lesion_create():
         )
 
 
+def test_additional_lesion_prefix_cannot_bypass_structured_schema():
+    with pytest.raises(ValidationError):
+        ObservationCreate(
+            field_name="additional_malignant_lesion:plain-text",
+            value="普通文本，绕过结构化校验",
+            confidence="LOW",
+            source_mode="RECORDED",
+        )
+
+
 def test_negative_malignancy_statement_is_rejected_on_edit_too():
     with pytest.raises(ValidationError):
         ObservationEdit(
@@ -90,6 +108,18 @@ def test_additional_lesion_requires_bilateral_or_multiple_trigger():
         )
 
 
+def test_additional_lesion_cannot_be_ai_inferred():
+    with pytest.raises(ValidationError):
+        ObservationCreate(
+            field_name="additional_malignant_lesion:ai",
+            value=lesion_payload(basis="明确恶性病灶"),
+            confidence="LOW",
+            source_mode="INFERRED",
+            inference_basis=[{"fact": "model guess"}],
+            ruleset_version="test",
+        )
+
+
 def test_frontend_only_opens_exception_layer_for_bilateral_or_multiple_and_requires_malignancy():
     script = (ROOT / "app/static/additional_lesions.js").read_text(encoding="utf-8")
     assert 'laterality === "BILATERAL"' in script
@@ -98,6 +128,19 @@ def test_frontend_only_opens_exception_layer_for_bilateral_or_multiple_and_requi
     assert "多发良性结节、囊肿或纤维腺瘤不能添加" in script
     assert 'confidence: "LOW"' in script
     assert "/verify" in script
+
+
+def test_existing_lesions_remain_visible_if_eligibility_is_later_removed():
+    script = (ROOT / "app/static/additional_lesions.js").read_text(encoding="utf-8")
+    assert "panel.hidden = !eligibility.eligible && records.length === 0" in script
+    assert "旧记录仅可查看或停用" in script
+    assert "if (eligibility.eligible) panel.appendChild(buildCreateForm" in script
+
+
+def test_additional_lesion_can_preserve_multiple_imaging_findings_without_entity_tree():
+    script = (ROOT / "app/static/additional_lesions.js").read_text(encoding="utf-8")
+    assert "imaging_detail" in script
+    assert "各影像检查补充" in script
 
 
 def test_additional_lesion_is_observation_exception_not_new_database_entity_table():
