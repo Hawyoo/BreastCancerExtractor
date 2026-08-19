@@ -349,12 +349,15 @@ def _verified_conflicts(patient_id: int, rows: dict[str, list[dict[str, Any]]]) 
         local = {
             str(row[0]): str(row[1] or "")
             for row in connection.execute(
-                "SELECT field_name,current_value FROM observations WHERE patient_id=? AND status='VERIFIED'",
+                """SELECT field_name,current_value FROM observations
+                   WHERE patient_id=? AND status='VERIFIED' AND source_mode!='DERIVED'""",
                 (patient_id,),
             ).fetchall()
         }
     conflicts = []
     for observation in rows["observations"]:
+        if observation.get("source_mode") == "DERIVED":
+            continue
         field = str(observation["field_name"])
         external = str(observation.get("current_value") or "")
         if observation.get("status") == "VERIFIED" and field in local and local[field] != external:
@@ -512,6 +515,10 @@ def import_patient_package(
                 ),
             )
         for observation in rows["observations"]:
+            # Derived rows travel inside patient.sqlite for portability, but the
+            # destination regenerates them from verified masters after merge.
+            if observation.get("source_mode") == "DERIVED":
+                continue
             mapped_document = (
                 document_map.get(str(observation.get("document_id"))) if observation.get("document_id") else None
             )
@@ -527,7 +534,7 @@ def import_patient_package(
             if action == "MERGE" and status == "VERIFIED":
                 local_verified = target.execute(
                     """SELECT current_value FROM observations WHERE patient_id=? AND field_name=?
-                       AND status='VERIFIED' LIMIT 1""",
+                       AND status='VERIFIED' AND source_mode!='DERIVED' LIMIT 1""",
                     (patient_id, observation["field_name"]),
                 ).fetchone()
                 if local_verified and str(local_verified["current_value"] or "") != str(
@@ -611,6 +618,8 @@ def import_patient_package(
                     run["finished_at"],
                 ),
             )
+
+        refresh_derived_observations(target)
         target.execute(
             """INSERT INTO audit_log(patient_id,operation,new_value,operator,reason,timestamp)
                VALUES(?,?,?,?,?,?)""",
