@@ -17,7 +17,7 @@
 
   function patientCodeFromPath(path) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
-    return parts.slice(0, -1).find(part => PATIENT_CODE_PATTERN.test(part)) || null;
+    return parts.slice(0, -1).reverse().find(part => PATIENT_CODE_PATTERN.test(part)) || null;
   }
 
   function installStyle() {
@@ -34,6 +34,9 @@
       .quick-import-drop{margin-top:7px;padding:10px;border:1px dashed var(--line,#b8c1c9);border-radius:8px;text-align:center;font-size:10px;color:var(--muted,#66736d);cursor:pointer}
       .quick-import-drop.dragover{outline:2px solid var(--green-dark,#174737);outline-offset:-2px;background:var(--mint,#eef5f1)}
       .quick-import-status{margin-top:6px;white-space:pre-wrap}
+      .quick-import-progress{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line,#d9dee7);border-radius:8px;background:var(--mint,#eef5f1);font-size:10px}
+      .quick-import-progress[hidden]{display:none!important}
+      .quick-import-progress span{line-height:1.45;white-space:pre-wrap}
     `;
     document.head.appendChild(style);
   }
@@ -41,8 +44,27 @@
   function updateStatus(message = "") {
     const status = document.querySelector("#quick-import-status");
     const cancel = document.querySelector("#quick-import-cancel");
+    const progress = document.querySelector("#quick-import-progress");
+    const progressText = document.querySelector("#quick-import-progress-text");
     if (status) status.textContent = message;
     if (cancel) cancel.hidden = !session.active;
+    if (progress) progress.hidden = !session.active;
+    if (progressText) progressText.textContent = message;
+  }
+
+  function cancelQuickImport({clearCurrentQueue = true, message = "本次快速导入已取消；已创建的患者保留。"} = {}) {
+    session.active = false;
+    session.advancing = false;
+    session.groups = [];
+    session.index = -1;
+    if (clearCurrentQueue) clearRawQueue();
+    updateStatus(`${message}\n原始图片未自动上传到服务器。`);
+  }
+
+  function requestCancelQuickImport() {
+    if (!session.active) return;
+    if (!confirm("取消本次快速导入？当前患者尚未确认的原图队列会被清空；已自动创建的患者不会被删除。")) return;
+    cancelQuickImport();
   }
 
   function ensureUi() {
@@ -66,6 +88,17 @@
       <div id="quick-import-status" class="quick-import-status">尚未选择文件夹</div>
     `;
     form.insertAdjacentElement("afterend", panel);
+
+    const workspaceImportBar = document.querySelector(".batch-import-bar");
+    if (workspaceImportBar && !document.querySelector("#quick-import-progress")) {
+      const progress = document.createElement("div");
+      progress.id = "quick-import-progress";
+      progress.className = "quick-import-progress";
+      progress.hidden = true;
+      progress.innerHTML = `<span id="quick-import-progress-text"></span><button id="quick-import-progress-cancel" class="tool" type="button">取消快速导入</button>`;
+      workspaceImportBar.insertAdjacentElement("beforebegin", progress);
+      progress.querySelector("#quick-import-progress-cancel").onclick = requestCancelQuickImport;
+    }
 
     const input = panel.querySelector("#quick-import-folders");
     input.addEventListener("change", async event => {
@@ -94,15 +127,7 @@
       }
     });
 
-    panel.querySelector("#quick-import-cancel").onclick = () => {
-      if (!session.active) return;
-      if (!confirm("取消本次快速导入？当前患者尚未确认的原图队列会被清空；已自动创建的患者不会被删除。")) return;
-      session.active = false;
-      session.groups = [];
-      session.index = -1;
-      clearRawQueue();
-      updateStatus("本次快速导入已取消；已创建的患者保留。\n原始图片未上传到服务器。");
-    };
+    panel.querySelector("#quick-import-cancel").onclick = requestCancelQuickImport;
   }
 
   async function readDirectoryEntry(directoryEntry, prefix = directoryEntry.name) {
@@ -239,10 +264,10 @@
       clearRawQueue();
       await selectPatient(group.patientId);
       queueFilesForCurrentPatient(group);
-      const remainingPatients = session.groups.length - index;
+      const remainingPatients = session.groups.length - index - 1;
       updateStatus(
         `快速导入进行中：患者 ${group.patientCode}（${index + 1}/${session.groups.length}）\n` +
-        `当前 ${group.files.length} 张待确认；剩余 ${remainingPatients} 个患者批次。` +
+        `当前 ${group.files.length} 张待确认；后续还有 ${remainingPatients} 个患者。` +
         ` 原图仍只保留在浏览器会话中。`
       );
     } finally {
@@ -260,11 +285,11 @@
       return;
     }
     session.active = false;
-    updateStatus(
+    const summary =
       `快速导入已完成：${session.groups.length} 个患者，${session.imageCount} 张初始图片；` +
-      `新建 ${session.createdCount} 个患者，复用 ${session.existingCount} 个已有患者。\n` +
-      `所有原图均经过逐张确认脱敏后才保存。`
-    );
+      `新建 ${session.createdCount} 个患者，复用 ${session.existingCount} 个已有患者。`;
+    updateStatus(`${summary}\n所有原图均经过逐张确认脱敏后才保存。`);
+    toast(summary);
   }
 
   async function beginQuickImport(entries) {
@@ -292,9 +317,7 @@
       session.createdCount = createdCount;
       session.existingCount = existingCount;
       session.imageCount = imageCount;
-      if (rejected.length) {
-        toast(`已忽略 ${rejected.length} 张无法从路径识别7位病案号的图片`);
-      }
+      if (rejected.length) toast(`已忽略 ${rejected.length} 张无法从路径识别7位病案号的图片`);
       await activateGroup(0);
     } catch (error) {
       session.active = false;
@@ -302,6 +325,28 @@
       updateStatus(`快速导入失败：${error.message}`);
       toast(`快速导入失败：${error.message}`);
     }
+  }
+
+  const originalSelectPatient = typeof selectPatient === "function" ? selectPatient : null;
+  if (originalSelectPatient) {
+    selectPatient = async id => {
+      if (session.active && !session.advancing && state.patient?.id !== id) {
+        if (!confirm("快速导入仍在进行。手动切换患者将取消剩余快速导入并清空当前未确认原图，是否继续？")) return;
+        cancelQuickImport({clearCurrentQueue: true, message: "因手动切换患者，快速导入已取消；已创建的患者保留。"});
+      }
+      return originalSelectPatient(id);
+    };
+  }
+
+  const originalLeavePatient = typeof leavePatient === "function" ? leavePatient : null;
+  if (originalLeavePatient) {
+    leavePatient = () => {
+      if (session.active && !session.advancing) {
+        if (!confirm("快速导入仍在进行。退出当前患者将取消剩余快速导入并清空当前未确认原图，是否继续？")) return false;
+        cancelQuickImport({clearCurrentQueue: true, message: "因退出患者，快速导入已取消；已创建的患者保留。"});
+      }
+      return originalLeavePatient();
+    };
   }
 
   ensureUi();
