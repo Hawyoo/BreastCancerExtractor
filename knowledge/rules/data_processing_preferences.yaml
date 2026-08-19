@@ -1,4 +1,4 @@
-version: 0.2.0
+version: 0.3.0
 title: 本队列数据处理偏好
 
 source_priority:
@@ -63,11 +63,23 @@ staging_summary:
     preferred_output_after_neoadjuvant: ypTNM
     evidence_order: [explicit_surgical_pathology_stage, surgical_pathology_primary_tumor, surgical_pathology_regional_nodes, documented_distant_metastasis]
     rule: 未行新辅助时使用pTNM；新辅助后手术病理使用ypTNM。T和N以术后病理报告为核心证据，手术记录不得替代术后病理。不得把未发现远处转移写成pM0。
+  stage_group:
+    store: false
+    infer: false
+    rule: 当前项目不保存AJCC解剖学或预后Stage Group；只保留完整cTNM/ycTNM和pTNM/ypTNM。
   shared_rules:
     - 病历明确记录的同语境TNM优先于AI推断；记录与证据明显矛盾时保留记录并提示人工复核。
     - 临床字段只接受cTNM或ycTNM，病理字段只接受pTNM或ypTNM；不得混用前缀。
     - 输出必须包含T、N、M三个组成部分；未知部分使用TX、NX或无法评估，不得凭空补齐。
-    - 分期组与TNM组成分开理解；当前问卷字段优先填写规范化TNM，不用单独的I/II/III/IV替代。
+    - 完整TNM主字段是唯一允许人工修改的分期字段；T/N/M拆分值仅在主字段人工确认后自动生成。
+  verified_postprocessing:
+    clinical_stage:
+      outputs: [clinical_t_component, clinical_n_component, clinical_m_component]
+      mode: DERIVED_READONLY
+    pathological_stage:
+      outputs: [pathological_t_component, pathological_n_component, pathological_m_component]
+      mode: DERIVED_READONLY
+    rule: 派生T/N/M不进入AI抽取、不单独人工填写或确认；主字段修改并重新确认后自动重算。
   component_evidence:
     cT:
       preferred_sources: [pretreatment_ultrasound, pretreatment_mammography, pretreatment_mri, clinical_examination]
@@ -140,7 +152,7 @@ derivations:
     needs_review: true
     safeguards:
       - 后续若发现明确转移证据，必须产生冲突提示并由人工确认。
-      - 局部区域淋巴结转移不等同于远处转移。
+      - 局部区域淋巴结转移不等于远处转移。
 
 measurements:
   breast_lesion_size:
@@ -150,10 +162,15 @@ measurements:
     input_slots: 3
     optional_slots: [height]
     separators: ['×', 'x', 'X', '*']
+    master_value_rule: 完整a×b或a×b×c表达作为唯一可编辑主字段保存；拆分字段不得覆盖完整表达。
+    verified_postprocessing:
+      mode: DERIVED_READONLY
+      outputs: [dimension_1_mm, dimension_2_mm, dimension_3_mm]
+      rule: 仅在完整尺寸主字段人工确认后，按原文顺序生成三个只读径线值；缺失的第三径保持空白。主字段修改并重新确认后自动重算。
     rule: 按原文顺序保存最多三个径线值；常见为两个径线，第三个输入框允许留空，不得复制或臆测第三径。
     conversion:
-      - cm统一换算为mm后保存。
-      - 保留原始尺寸文字作为证据。
+      - cm统一换算为mm后保存派生径线。
+      - 完整原始尺寸表达继续保留作为主字段和证据。
       - 不把三个径线相乘后称为体积；只有明确需要时才另行计算体积。
 
 missing_values:
@@ -183,14 +200,6 @@ conditional_questions:
       dependents: [postoperative_targeted_regimen, postoperative_targeted_cycles]
     - prerequisite: {field: palliative_systemic_treatment, equals: 'YES'}
       dependents: [palliative_systemic_regimen]
-
-pathology:
-  type_format:
-    rule: 病理类型字段只写病理/组织学类型，不拼接左右侧、TNM或分期信息。
-
-followup:
-  last_visit_date:
-    rule: 末次就诊时间优先从对应人工ROI读取；一般用于OS/随访终点，必须保留日期原文及来源。
 
 invalid_values:
   reserved_metadata_tokens: [RECORDED, INFERRED, record, recorded]
