@@ -10,7 +10,11 @@ import httpx
 from fastapi import HTTPException
 
 from app.config import settings
-from app.runtime_config import get_ollama_provider, get_selected_ollama_model
+from app.runtime_config import (
+    DISABLED_OLLAMA_ENDPOINT,
+    get_ollama_provider,
+    get_selected_ollama_model,
+)
 from app.storage import resolve_gguf
 
 EXTRACTION_SCHEMA = {
@@ -49,12 +53,24 @@ EXTRACTION_SCHEMA = {
 _FILE_DIGEST_CACHE: dict[str, tuple[int, int, str]] = {}
 
 
+def _ai_disabled(base_url: str | None = None) -> bool:
+    if base_url is not None:
+        return base_url == DISABLED_OLLAMA_ENDPOINT or base_url.startswith("disabled://")
+    return get_ollama_provider()["provider"] == "DISABLED"
+
+
+def _disabled_error() -> HTTPException:
+    return HTTPException(status_code=409, detail="本地AI已断开；当前为仅OCR模式")
+
+
 async def ollama_request(
     method: str,
     path: str,
     json: dict[str, Any] | None = None,
     base_url: str | None = None,
 ) -> Any:
+    if _ai_disabled(base_url):
+        raise _disabled_error()
     try:
         endpoint = base_url or get_ollama_provider()["endpoint"]
         timeout = httpx.Timeout(connect=10, read=600, write=120, pool=10)
@@ -107,11 +123,7 @@ def group_models_by_digest(models: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 async def list_model_groups(base_url: str | None = None) -> list[dict[str, Any]]:
-    """Return only models that can be used for chat-based extraction.
-
-    Embedding-only models are intentionally filtered before grouping so model
-    counts, aliases, and the model picker all describe the same usable set.
-    """
+    """Return only models that can be used for chat-based extraction."""
     return group_models_by_digest(await list_extraction_models(base_url))
 
 
@@ -132,6 +144,20 @@ async def model_source_digests() -> dict[str, list[str]]:
 async def ollama_health(base_url: str | None = None) -> dict[str, Any]:
     runtime = get_ollama_provider()
     endpoint = base_url or runtime["endpoint"]
+    disabled = _ai_disabled(base_url) if base_url is not None else runtime["provider"] == "DISABLED"
+    if disabled:
+        # `available=True` intentionally lets the generic provider-switch route
+        # persist DISABLED without trying a network connection.
+        return {
+            "available": True,
+            "disabled": True,
+            "models": 0,
+            "default_model": None,
+            "endpoint": endpoint,
+            "provider": "DISABLED" if base_url is None else None,
+            "processor": "DISABLED",
+            "vram_bytes": 0,
+        }
     try:
         models = await list_model_groups(endpoint)
         running = await ollama_request("GET", "/api/ps", base_url=endpoint)
@@ -139,6 +165,7 @@ async def ollama_health(base_url: str | None = None) -> dict[str, Any]:
         vram_bytes = sum(int(model.get("size_vram") or 0) for model in running_models)
         return {
             "available": True,
+            "disabled": False,
             "models": len(models),
             "default_model": get_selected_ollama_model(runtime["provider"]),
             "endpoint": endpoint,
@@ -147,11 +174,13 @@ async def ollama_health(base_url: str | None = None) -> dict[str, Any]:
             "vram_bytes": vram_bytes,
         }
     except HTTPException as exc:
-        return {"available": False, "models": 0, "error": str(exc.detail), "endpoint": endpoint,
+        return {"available": False, "disabled": False, "models": 0, "error": str(exc.detail), "endpoint": endpoint,
                 "provider": runtime["provider"] if base_url is None else None, "processor": "UNAVAILABLE"}
 
 
 async def ollama_runtime_status() -> dict[str, int | str]:
+    if _ai_disabled():
+        return {"processor": "DISABLED", "vram_bytes": 0}
     running = await ollama_request("GET", "/api/ps")
     running_models = running.get("models", [])
     vram_bytes = sum(int(model.get("size_vram") or 0) for model in running_models)
@@ -168,6 +197,8 @@ async def extract_structured(
     *,
     think: bool = False,
 ) -> dict[str, Any]:
+    if _ai_disabled():
+        raise _disabled_error()
     endpoint = get_ollama_provider()["endpoint"]
     timeout = httpx.Timeout(connect=10, read=600, write=120, pool=10)
     request_payload = {
@@ -247,6 +278,8 @@ async def extract_structured(
 
 
 async def import_gguf(filename: str, model_name: str) -> dict[str, Any]:
+    if _ai_disabled():
+        raise _disabled_error()
     model_path = resolve_gguf(filename)
     digest = await asyncio.to_thread(cached_file_sha256, model_path)
     blob_digest = f"sha256:{digest}"
@@ -284,6 +317,8 @@ def cached_file_sha256(path: Path) -> str:
 
 
 async def ensure_blob(path: Path, digest: str) -> None:
+    if _ai_disabled():
+        raise _disabled_error()
     timeout = httpx.Timeout(connect=10, read=3600, write=3600, pool=10)
     try:
         async with httpx.AsyncClient(base_url=get_ollama_provider()["endpoint"], timeout=timeout) as client:
