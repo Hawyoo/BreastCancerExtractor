@@ -81,3 +81,5 @@ def test_quick_import_loader_runs_on_web_docker_and_windows_before_shutdown_earl
     early_return = shutdown.index("if (!port || !token) return")
     assert loader < params < early_return
     assert 'data-bce-quick-import="1"' in shutdown
+    assert "quickImportScript.onload" in shutdown
+    assert "exitButton.onclick = leavePatient" in shutdown
