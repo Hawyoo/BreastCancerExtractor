@@ -68,6 +68,17 @@ def test_windows_portable_ollama_is_optional():
     assert "-IncludeOllama" in ollama_bat
 
 
+def test_windows_portable_validates_real_ocr_inference_before_success():
+    builder = (ROOT / "scripts/build-portable.ps1").read_text(encoding="utf-8")
+    warmup = (ROOT / "scripts/warm-ocr.py").read_text(encoding="utf-8")
+
+    assert "engine.predict(" in warmup
+    assert "PaddleOCR inference warm-up passed" in warmup
+    assert 'Remove-Item -LiteralPath $PortableCache -Recurse -Force' in builder
+    assert '& $PortableExe --ocr-self-test' in builder
+    assert "Finished Portable failed the OCR inference self-test" in builder
+
+
 def test_docker_runtime_mode_remains_explicit():
     root = Path(__file__).resolve().parents[1]
     compose = (root / "compose.yaml").read_text(encoding="utf-8")
