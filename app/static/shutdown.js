@@ -1,13 +1,27 @@
 (() => {
-  // This module is loaded after enhancements.js/derived_fields.js. Keep the
-  // post-review UI follow-up independent of whether Windows shutdown control is
-  // available (e.g. Docker still gets the inline review layout).
-  if (!document.querySelector('script[data-bce-review-inline="1"]')) {
+  // These post-review modules are independent of whether Windows shutdown
+  // control is available, so Docker and Portable share the same review UI.
+  function loadAdditionalLesions() {
+    if (document.querySelector('script[data-bce-additional-lesions="1"]')) return;
+    const script = document.createElement("script");
+    script.src = "/additional_lesions.js";
+    script.defer = true;
+    script.dataset.bceAdditionalLesions = "1";
+    document.body.appendChild(script);
+  }
+
+  const existingReviewScript = document.querySelector('script[data-bce-review-inline="1"]');
+  if (!existingReviewScript) {
     const reviewScript = document.createElement("script");
     reviewScript.src = "/review_inline.js";
     reviewScript.defer = true;
     reviewScript.dataset.bceReviewInline = "1";
+    reviewScript.onload = loadAdditionalLesions;
     document.body.appendChild(reviewScript);
+  } else {
+    // Normally shutdown.js owns this load chain. This fallback also supports a
+    // page where review_inline.js was inserted earlier by another entry point.
+    setTimeout(loadAdditionalLesions, 0);
   }
 
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
