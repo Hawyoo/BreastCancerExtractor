@@ -1,6 +1,5 @@
 (() => {
   const INTEGER_FIELDS = new Set(["menarche_age", "menopause_age"]);
-  const TNM_FIELDS = new Set(["clinical_stage", "pathological_stage"]);
 
   function installStyles() {
     if (document.querySelector("#field-validation-style")) return;
@@ -11,7 +10,7 @@
       .field-validation-message{display:block;margin-top:4px;font-size:11px;line-height:1.45;color:#b42318;font-weight:600}
       .field-validation-message[hidden],.field-format-hint[hidden]{display:none}
       .field-clear-choice{margin-left:4px;border-style:dashed!important}
-      .patient-review-inline-input.field-invalid{border-color:#b42318!important;outline-color:#b42318!important}
+      .patient-review-inline-input.field-invalid,#review-current-value.field-invalid{border-color:#b42318!important;outline-color:#b42318!important}
     `;
     document.head.appendChild(style);
   }
@@ -290,7 +289,7 @@
         });
       }
       await refreshCurrentPatient(state.patient.id);
-      if (typeof showPatientReview === "function") await showPatientReview({focusKey: key, scrollPanel: false});
+      if (typeof showPatientReview === "function") await showPatientReview(key, false);
     } catch (error) {
       const {message} = ensureInlineMessages(row, observation);
       if (message) {
