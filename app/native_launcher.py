@@ -126,7 +126,10 @@ def configure_native_environment(root: Path | None = None) -> Path:
     root = (root or _portable_root()).resolve()
     os.environ["BCE_PORTABLE_ROOT"] = str(root)
     os.environ["RUNTIME_MODE"] = "windows_native"
-    os.environ["DATABASE_PATH"] = str(root / "database" / "catalog.sqlite")
+    os.environ["DATA_PATH"] = str(root / "database")
+    os.environ["CONFIG_PATH"] = str(root / "config")
+    os.environ["RUNTIME_PATH"] = str(root / "runtime")
+    os.environ["DATABASE_PATH"] = str(root / "runtime" / "catalog.sqlite")
     os.environ["MODEL_IMPORT_PATH"] = str(root / "models" / "llm")
     os.environ["OLLAMA_URL"] = f"http://{APP_HOST}:{OLLAMA_PORT}"
     os.environ["OCR_URL"] = f"http://{APP_HOST}:{OCR_PORT}"
@@ -136,6 +139,8 @@ def configure_native_environment(root: Path | None = None) -> Path:
     for directory in (
         root / "database",
         root / "database" / "patients",
+        root / "config",
+        root / "runtime",
         root / "models" / "llm",
         root / "models" / "ollama",
         root / "local_knowledge",
@@ -202,8 +207,20 @@ def _find_ollama(root: Path) -> Path | None:
     return next((item.resolve() for item in candidates if item.is_file()), None)
 
 
+def _runtime_config_file(root: Path) -> Path:
+    target = root / "config" / "runtime_config.json"
+    legacy = root / "database" / "runtime_config.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if legacy.is_file():
+        if not target.exists():
+            legacy.replace(target)
+        else:
+            legacy.unlink(missing_ok=True)
+    return target
+
+
 def _ollama_disabled(root: Path) -> bool:
-    config = root / "database" / "runtime_config.json"
+    config = _runtime_config_file(root)
     if not config.is_file():
         return False
     try:
