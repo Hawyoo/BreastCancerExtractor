@@ -74,6 +74,7 @@
       .additional-lesions-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
       .additional-lesions-title strong{font-size:12px;color:var(--green-dark,#174737)}
       .additional-lesions-note{margin:3px 0 8px;color:var(--muted,#66736d);line-height:1.45}
+      .additional-lesions-warning{margin:6px 0;padding:7px;border:1px solid var(--line,#d9dee7);border-radius:7px;background:var(--panel,#fff);line-height:1.45}
       .additional-lesion-card{padding:8px;margin:7px 0;border:1px solid var(--line,#d9dee7);border-radius:8px;background:var(--panel,#fff)}
       .additional-lesion-card.inactive{opacity:.62}
       .additional-lesion-card h4{margin:0 0 6px;font-size:11px}
@@ -157,16 +158,21 @@
     return {wrapper, input};
   }
 
+  function currentTriggers(original, eligibility) {
+    return eligibility.triggers.length ? [...eligibility.triggers] : [...(original?.trigger_basis || [])];
+  }
+
   function lesionValueFromEditors(original, editors, eligibility) {
     return {
       ...original,
       schema: PAYLOAD_SCHEMA,
       active: original?.active !== false,
       malignancy_confirmed: true,
-      trigger_basis: [...eligibility.triggers],
+      trigger_basis: currentTriggers(original, eligibility),
       laterality: editors.laterality.value,
       location: editors.location.value.trim(),
       size_text: editors.size_text.value.trim(),
+      imaging_detail: editors.imaging_detail.value.trim(),
       pathology_type: editors.pathology_type.value.trim(),
       er: editors.er.value.trim(),
       pr: editors.pr.value.trim(),
@@ -182,7 +188,8 @@
     const fields = {
       laterality: inputField("侧别", value?.laterality || defaultSide, [["左侧", "LEFT"], ["右侧", "RIGHT"]]),
       location: inputField("位置 / 方位", value?.location),
-      size_text: inputField("大小（保留原始径线）", value?.size_text),
+      size_text: inputField("大小（可记录多个原始径线）", value?.size_text),
+      imaging_detail: textAreaField("各影像检查补充（可记录超声/MRI/钼靶各自的大小、方位）", value?.imaging_detail),
       pathology_type: inputField("病理类型", value?.pathology_type),
       er: inputField("ER", value?.er),
       pr: inputField("PR", value?.pr),
@@ -205,6 +212,10 @@
 
   async function createLesion(form, eligibility, records) {
     const basis = form.basis.value.trim();
+    if (!eligibility.eligible) {
+      toast("当前患者不满足双侧或影像学恶性病灶多发条件，不能新增附加病灶");
+      return;
+    }
     if (!malignantBasisIsValid(basis)) {
       toast("附加病灶必须有明确恶性依据；多发良性结节、囊肿或纤维腺瘤不能添加");
       return;
@@ -249,6 +260,7 @@
   }
 
   async function saveExisting(record, editors, eligibility, button) {
+    if (!eligibility.eligible) return toast("当前双侧/多发条件已取消；旧记录仅可查看或停用，不能修改为新的活动病灶信息");
     const next = lesionValueFromEditors(record.value, editors, eligibility);
     button.disabled = true;
     try {
@@ -271,7 +283,7 @@
 
   async function deactivateExisting(record, eligibility, button) {
     if (!confirm(`停用附加病灶 ${record.value.lesion_number || ""}？记录仍会保留在审计历史中。`)) return;
-    const next = {...record.value, active: false, trigger_basis: [...eligibility.triggers]};
+    const next = {...record.value, active: false, trigger_basis: currentTriggers(record.value, eligibility)};
     button.disabled = true;
     try {
       await api(`/api/observations/${record.observation.id}`, {
@@ -308,6 +320,7 @@
     const grid = document.createElement("div");
     grid.className = "additional-lesion-grid";
     const editors = buildEditors(grid, record.value, eligibility, false);
+    if (!eligibility.eligible) Object.values(editors).forEach(input => { input.disabled = true; });
     card.appendChild(grid);
     const basis = document.createElement("div");
     basis.className = "additional-lesion-basis";
@@ -316,12 +329,14 @@
 
     const actions = document.createElement("div");
     actions.className = "additional-lesion-actions";
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "tool";
-    save.textContent = "保存修改";
-    save.onclick = () => saveExisting(record, editors, eligibility, save);
-    actions.appendChild(save);
+    if (eligibility.eligible) {
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "tool";
+      save.textContent = "保存修改";
+      save.onclick = () => saveExisting(record, editors, eligibility, save);
+      actions.appendChild(save);
+    }
     if (record.observation.document_id && typeof openSavedDocumentPreview === "function") {
       const source = document.createElement("button");
       source.type = "button";
@@ -399,22 +414,29 @@
     const panel = ensurePanel();
     if (!panel || !state?.patient) return;
     const eligibility = patientEligibility();
-    panel.hidden = !eligibility.eligible;
+    const records = lesionRecords();
+    panel.hidden = !eligibility.eligible && records.length === 0;
     panel.innerHTML = "";
-    if (!eligibility.eligible) return;
+    if (panel.hidden) return;
 
     const title = document.createElement("div");
     title.className = "additional-lesions-title";
-    title.innerHTML = `<strong>附加恶性病灶</strong><span>${escapeLocal(triggerLabel(eligibility.triggers))}</span>`;
+    title.innerHTML = `<strong>附加恶性病灶</strong><span>${escapeLocal(eligibility.eligible ? triggerLabel(eligibility.triggers) : "当前未满足新增条件")}</span>`;
     panel.appendChild(title);
     const note = document.createElement("div");
     note.className = "additional-lesions-note";
     note.textContent = "这是低频例外层：患者信息、手术和治疗仍只记录一套。只有明确恶性的第二/更多病灶才在这里记录大小、方位、病理和IHC；触发条件本身不会自动创建病灶。";
     panel.appendChild(note);
 
-    const records = lesionRecords();
+    if (!eligibility.eligible && records.length) {
+      const warning = document.createElement("div");
+      warning.className = "additional-lesions-warning";
+      warning.textContent = "当前偏侧性已不是“双侧”，且影像学恶性病灶也不是“多发”。既往附加病灶记录仍保留并可查看/停用，但不能继续新增；如判定有误，请先纠正双侧或影像多发字段。";
+      panel.appendChild(warning);
+    }
+
     records.forEach(record => panel.appendChild(buildExistingCard(record, eligibility)));
-    panel.appendChild(buildCreateForm(eligibility, records));
+    if (eligibility.eligible) panel.appendChild(buildCreateForm(eligibility, records));
   }
 
   function scheduleRender() {
