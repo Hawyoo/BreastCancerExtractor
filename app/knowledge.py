@@ -116,10 +116,27 @@ def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     fields = expand_questionnaire_catalog(payload["fields"])
-    return [
+    runtime_fields = [
         {**field, **QUESTIONNAIRE_FIELD_OVERRIDES.get(field["key"], {})}
         for field in fields
     ]
+
+    # The stable key historically sits inside the mammography section in the
+    # source WPS-derived dictionary. Runtime moves the same field before the
+    # modality-specific imaging groups, so review/export present a true imaging-
+    # wide question without breaking old observations that use the original key.
+    multiplicity = next((field for field in runtime_fields if field["key"] == IMAGING_MULTIPLICITY_FIELD), None)
+    if multiplicity is not None:
+        runtime_fields = [field for field in runtime_fields if field["key"] != IMAGING_MULTIPLICITY_FIELD]
+        insert_at = next(
+            (
+                index for index, field in enumerate(runtime_fields)
+                if str(field.get("group", "")).startswith("pretreatment_")
+            ),
+            len(runtime_fields),
+        )
+        runtime_fields.insert(insert_at, multiplicity)
+    return runtime_fields
 
 
 @lru_cache
