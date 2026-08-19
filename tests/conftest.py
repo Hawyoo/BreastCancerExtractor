@@ -9,7 +9,10 @@ from app.main import app
 
 @pytest.fixture
 def client(tmp_path: Path):
-    settings.database_path = tmp_path / "database" / "test.db"
+    settings.data_path = tmp_path / "database"
+    settings.config_path = tmp_path / "config"
+    settings.runtime_path = tmp_path / "runtime"
+    settings.database_path = settings.runtime_path / "test.db"
     settings.model_import_path = tmp_path / "models"
     with TestClient(app) as test_client:
         yield test_client
