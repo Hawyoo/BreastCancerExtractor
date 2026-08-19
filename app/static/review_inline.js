@@ -31,6 +31,22 @@
   const DIRECT_IDENTIFIER_FIELDS = new Set(["record_number", "contact"]);
   const TNM_FIELDS = new Set(["clinical_stage", "pathological_stage"]);
   const INTEGER_FIELD_KEYS = new Set(["menarche_age", "menopause_age"]);
+  const YES_NO_FIELD_KEYS = new Set([
+    "menopausal_status",
+    "has_chronic_disease", "has_family_history", "has_given_birth",
+    "smoking_history", "drinking_history", "first_breast_cancer", "prior_breast_surgery",
+    "concurrent_other_cancer", "metastatic_at_presentation",
+    "pre_us_available", "pre_us_nodes_normal", "pre_mmg_available", "pre_mmg_calcification",
+    "pre_mri_available", "pre_mri_nodes_normal",
+    "primary_biopsy_performed", "node_biopsy_performed", "metastasis_biopsy_performed",
+    "neoadjuvant_received", "post_neoadj_us_available", "post_neoadj_us_tumor_response",
+    "post_neoadj_us_nodes_response", "post_neoadj_mri_available", "post_neoadj_mri_tumor_response",
+    "post_neoadj_mri_nodes_response", "surgery_performed", "reconstruction_performed",
+    "postop_node_metastasis", "post_neoadj_pcr", "postoperative_radiotherapy",
+    "postoperative_chemotherapy", "postoperative_endocrine", "postoperative_immunotherapy",
+    "postoperative_targeted", "palliative_systemic_treatment", "recurrence", "followup_metastasis",
+    "second_primary_cancer", "death",
+  ]);
   const FIELD_LABEL_OVERRIDES = {
     has_chronic_disease: "是否患慢性病",
     chronic_disease: "慢性病（可多选）",
@@ -39,9 +55,6 @@
   const YES_NO_OPTIONS = [
     {label: "是", value: "YES"},
     {label: "否", value: "NO"},
-  ];
-  const MENOPAUSE_OPTIONS = [
-    ...YES_NO_OPTIONS,
     {label: "不详", value: "UNKNOWN"},
   ];
   const CHRONIC_OPTIONS = [
@@ -50,6 +63,9 @@
     {label: "冠心病", value: "CORONARY_HEART_DISEASE"},
     {label: "其他", value: "OTHER"},
   ];
+
+  const originalStatusText = typeof statusText === "function" ? statusText : value => String(value || "");
+  statusText = status => status === "DEFAULT_UNMENTIONED" ? "病历未提及 · 默认否" : originalStatusText(status);
 
   function derivedField(key) {
     return [
@@ -64,6 +80,11 @@
 
   function displayFieldLabel(key, fallback) {
     return FIELD_LABEL_OVERRIDES[key] || fallback || key;
+  }
+
+  function normalizeYesNoValue(value) {
+    const text = String(value ?? "").trim();
+    return ({"是":"YES", "否":"NO", "不详":"UNKNOWN"})[text] || text.toUpperCase();
   }
 
   function parseMultiValue(value) {
@@ -93,6 +114,10 @@
     const observation = observations.get(key);
     if (observation) return String(observation.current_value ?? "").trim();
     const preview = row?.values?.[key];
+    if (YES_NO_FIELD_KEYS.has(key)) {
+      if (preview == null || preview === "" || preview === "NA") return "NO";
+      return normalizeYesNoValue(preview);
+    }
     return preview == null || preview === "NA" ? "" : String(preview).trim();
   }
 
@@ -111,8 +136,7 @@
   }
 
   function fieldInlineOptions(key, observation) {
-    if (key === "has_chronic_disease") return YES_NO_OPTIONS;
-    if (key === "menopausal_status") return MENOPAUSE_OPTIONS;
+    if (YES_NO_FIELD_KEYS.has(key)) return YES_NO_OPTIONS;
     if (key === "chronic_disease") return CHRONIC_OPTIONS;
     return Array.isArray(observation?.field_options) ? observation.field_options : [];
   }
@@ -159,8 +183,8 @@
     if (!readonly && key === "chronic_disease") {
       return createChoiceEditor(key, value, options, true);
     }
-    if (!readonly && ["has_chronic_disease", "menopausal_status"].includes(key)) {
-      return createChoiceEditor(key, value, options, false);
+    if (!readonly && YES_NO_FIELD_KEYS.has(key)) {
+      return createChoiceEditor(key, normalizeYesNoValue(value || "NO"), options, false);
     }
     if (!readonly && (observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(key))) {
       const input = document.createElement("input");
@@ -186,6 +210,7 @@
   }
 
   // Main sequential field review: multiselect must really be multi-select.
+  // yes_no_unknown options come from app.knowledge and always include UNKNOWN for human review.
   const originalRenderReviewChoices = typeof renderReviewChoices === "function" ? renderReviewChoices : null;
   if (originalRenderReviewChoices) {
     renderReviewChoices = observation => {
@@ -287,12 +312,14 @@
   async function saveInlineField(column, observation, input, button) {
     if (!state.patient) return;
     const value = String(input.value ?? "").trim();
-    const oldValue = String(observation?.current_value ?? "").trim();
+    const oldValue = observation
+      ? String(observation.current_value ?? "").trim()
+      : (YES_NO_FIELD_KEYS.has(column.key) ? "NO" : "");
     if (!value) return toast(column.key === "chronic_disease" ? "请至少选择一种慢性病" : "请输入字段内容");
     if ((observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(column.key)) && !/^\d+$/.test(value)) {
       return toast("该字段只能填写数字");
     }
-    if (observation && value === oldValue) return toast("字段值没有变化");
+    if (value === oldValue) return toast(YES_NO_FIELD_KEYS.has(column.key) && !observation ? "病历未提及，当前已按规则默认记为否" : "字段值没有变化");
 
     button.disabled = true;
     button.textContent = "保存中…";
@@ -314,7 +341,7 @@
           body: JSON.stringify({
             field_name: column.key,
             value,
-            raw_text: "人工手动补充",
+            raw_text: YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否" : "人工手动补充",
             confidence: "LOW",
             source_mode: "RECORDED",
           }),
@@ -333,6 +360,7 @@
   async function renderPatientInlineReview(focusKey = null, scrollPanel = true) {
     if (!state.patient || !body) return;
     const dataset = await api("/api/data-preview?verified_only=false");
+    applyBooleanDefaultsToDataset(dataset);
     const row = dataset.rows.find(item => item.patient_id === state.patient.id);
     if (!row) throw new Error("未找到当前患者数据");
 
@@ -356,9 +384,11 @@
 
       for (const column of visibleColumns) {
         const observation = observations.get(column.key);
-        const preview = row.values[column.key] ?? "";
-        const value = observation ? String(observation.current_value ?? "") : String(preview === "NA" ? "" : preview ?? "");
-        const status = row.statuses[column.key] || "EMPTY";
+        const value = observation
+          ? String(observation.current_value ?? "")
+          : currentPatientValue(column.key, observations, row);
+        const defaultNo = !observation && YES_NO_FIELD_KEYS.has(column.key);
+        const status = defaultNo ? "DEFAULT_UNMENTIONED" : (row.statuses[column.key] || "EMPTY");
         const readonly = DIRECT_IDENTIFIER_FIELDS.has(column.key) || derivedField(column.key);
 
         const tr = document.createElement("tr");
@@ -378,7 +408,7 @@
           const saveButton = document.createElement("button");
           saveButton.type = "button";
           saveButton.className = "tool patient-review-save";
-          saveButton.textContent = observation ? "保存" : "填写";
+          saveButton.textContent = observation ? "保存" : (defaultNo ? "保存修改" : "填写");
           saveButton.onclick = () => saveInlineField(column, observation, editor.input, saveButton);
           actionCell.appendChild(saveButton);
         } else {
@@ -410,6 +440,72 @@
         target?.querySelector("textarea:not([readonly]),input:not([readonly]):not([type=hidden])")?.focus({preventScroll: true});
       });
     }
+  }
+
+  function applyBooleanDefaultsToDataset(dataset) {
+    if (!dataset?.rows) return dataset;
+    for (const row of dataset.rows) {
+      row.values ||= {};
+      row.statuses ||= {};
+      for (const key of YES_NO_FIELD_KEYS) {
+        const current = row.values[key];
+        const status = row.statuses[key] || "EMPTY";
+        if ((current == null || current === "") && status !== "UNAVAILABLE") {
+          row.values[key] = "否";
+          row.statuses[key] = "DEFAULT_UNMENTIONED";
+        }
+      }
+    }
+    return dataset;
+  }
+
+  const originalLoadDataPreview = typeof loadDataPreview === "function" ? loadDataPreview : null;
+  if (originalLoadDataPreview) {
+    loadDataPreview = async () => {
+      const verifiedOnly = document.querySelector("#data-preview-scope").value === "verified";
+      const loading = document.querySelector("#data-preview-loading");
+      loading.hidden = false;
+      document.querySelector("#data-preview-table").hidden = true;
+      try {
+        state.dataPreview = applyBooleanDefaultsToDataset(await api(`/api/data-preview?verified_only=${verifiedOnly}`));
+        renderDataPreview();
+      } finally {
+        loading.hidden = true;
+        document.querySelector("#data-preview-table").hidden = false;
+      }
+    };
+  }
+
+  function csvCell(value) {
+    const text = String(value ?? "");
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  const exportButton = document.querySelector("#export-data-csv");
+  if (exportButton) {
+    exportButton.onclick = async () => {
+      const verifiedOnly = document.querySelector("#data-preview-scope").value === "verified";
+      if (!state.dataPreview || Boolean(state.dataPreview.verified_only) !== verifiedOnly) await loadDataPreview();
+      const dataset = applyBooleanDefaultsToDataset(state.dataPreview);
+      const lines = [dataset.columns.map(column => csvCell(column.label)).join(",")];
+      for (const row of dataset.rows) {
+        const values = dataset.columns.map(column => {
+          let value = row.values[column.key] ?? "";
+          if (column.key === "record_number" && /^\d{7}$/.test(String(value))) value = `="${value}"`;
+          return csvCell(value);
+        });
+        lines.push(values.join(","));
+      }
+      const blob = new Blob(["\ufeff", lines.join("\r\n")], {type: "text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = verifiedOnly ? "乳腺癌患者数据_仅人工确认.csv" : "乳腺癌患者数据_全部当前结果.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    };
   }
 
   showPatientReview = renderPatientInlineReview;

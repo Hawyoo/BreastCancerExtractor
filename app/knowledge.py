@@ -40,6 +40,24 @@ DOCUMENT_FIELD_INCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"contact"},
 }
 
+# Human review may always override a yes/no default to UNKNOWN, even where the
+# source WPS form itself exposes only yes/no. This is an internal review option;
+# the AI must not invent UNKNOWN when a document is merely silent.
+HUMAN_YES_NO_OPTIONS = [
+    {"label": "是", "value": "YES"},
+    {"label": "否", "value": "NO"},
+    {"label": "不详", "value": "UNKNOWN"},
+]
+
+PATIENT_LEVEL_BOOLEAN_POLICY = {
+    "scope": "patient_level_after_all_current_documents",
+    "field_type": "yes_no_unknown",
+    "unmentioned_default": "NO",
+    "default_provenance": "DEFAULT_UNMENTIONED",
+    "human_overrides": ["YES", "NO", "UNKNOWN"],
+    "document_level_rule": "单张病历未提及是否型字段时不要由AI输出NO或UNKNOWN；患者级汇总时再统一默认NO。",
+}
+
 # Runtime wording can be clearer than the source form while keeping stable keys.
 # These labels are used by review/data-preview/export without changing patient data.
 QUESTIONNAIRE_FIELD_OVERRIDES = {
@@ -114,6 +132,16 @@ def _allowed_values_for_field(field: dict) -> object:
     return values
 
 
+def _field_options_for_field(field: dict, option_index: dict[str, list[dict[str, str]]]) -> list[dict[str, str]]:
+    options = [dict(item) for item in option_index.get(field["key"], [])]
+    if field.get("type") == "yes_no_unknown":
+        existing = {str(item["value"]).upper() for item in options}
+        for option in HUMAN_YES_NO_OPTIONS:
+            if option["value"] not in existing:
+                options.append(dict(option))
+    return options
+
+
 @lru_cache
 def field_catalog() -> list[dict]:
     return [
@@ -132,7 +160,7 @@ def questionnaire_field_index() -> dict[str, dict]:
             "field_group": field.get("group", "other"),
             "field_type": field.get("type", "string"),
             "allowed_values": _allowed_values_for_field(field),
-            "field_options": option_index.get(field["key"], []),
+            "field_options": _field_options_for_field(field, option_index),
             "depends_on": field.get("depends_on"),
             "capture": field.get("capture"),
             "derived_from": field.get("derived_from"),
@@ -224,8 +252,12 @@ def extraction_prompt(
         "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段。"
         "integer类型的value只能填写阿拉伯数字整数，不能填写文字；"
         "multiselect类型如同时命中多个选项，按values定义顺序用英文逗号连接标准值，"
-        "例如HYPERTENSION,DIABETES，不要只保留一个选项：\n"
+        "例如HYPERTENSION,DIABETES，不要只保留一个选项。"
+        "yes_no_unknown类型如果本页没有明确相关记录，不要在单张文档层面输出NO或UNKNOWN；"
+        "系统会在患者级汇总时把始终未提及的是否型题目统一默认成NO，人工审核仍可改为YES、NO或UNKNOWN：\n"
         f"{yaml.safe_dump(definitions, allow_unicode=True, sort_keys=False)}\n\n"
+        "患者级是否题默认规则如下；该规则只用于最终患者汇总，不等同于本页病历明确记录：\n"
+        f"{yaml.safe_dump(PATIENT_LEVEL_BOOLEAN_POLICY, allow_unicode=True, sort_keys=False)}\n\n"
         "该文档类型的专用抽取规则如下；专用规则优先于通用文字邻近判断：\n"
         f"{yaml.safe_dump(rules, allow_unicode=True, sort_keys=False)}\n\n"
         "本队列的数据处理偏好如下。推断值必须标记source_mode=INFERRED；前提不满足时使用NOT_APPLICABLE：\n"
