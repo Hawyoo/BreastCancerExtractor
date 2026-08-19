@@ -43,6 +43,19 @@ def test_windows_native_portable_build_is_onedir_and_reuses_core_app():
     assert "pyinstaller --noconfirm --clean BreastCancerExtractor.spec" in builder
 
 
+def test_windows_portable_separates_patient_data_config_and_runtime():
+    launcher = (ROOT / "app/native_launcher.py").read_text(encoding="utf-8")
+    builder = (ROOT / "scripts/build-portable.ps1").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'root / "database" / "patients"' in launcher
+    assert 'root / "config"' in launcher
+    assert 'root / "runtime" / "catalog.sqlite"' in launcher
+    assert '"database\\patients", "config", "runtime"' in builder
+    assert "database\\catalog.sqlite      → runtime\\catalog.sqlite" in readme
+    assert "患者资料只需要备份 `database\\`" in readme
+
+
 def test_windows_portable_ollama_is_optional():
     builder = (ROOT / "scripts/build-portable.ps1").read_text(encoding="utf-8")
     default_bat = (ROOT / "build-portable.bat").read_text(encoding="utf-8")
@@ -61,6 +74,9 @@ def test_docker_runtime_mode_remains_explicit():
     assert "RUNTIME_MODE: docker" in compose
     assert "http://ollama:11434" in compose
     assert "http://ocr:8001" in compose
+    assert "DATA_PATH: /data" in compose
+    assert "CONFIG_PATH: /config" in compose
+    assert "DATABASE_PATH: /runtime/catalog.sqlite" in compose
 
 
 def test_readme_makes_windows_ollama_optional():
