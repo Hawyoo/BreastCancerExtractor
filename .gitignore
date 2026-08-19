@@ -2,6 +2,8 @@
 database/
 patients/
 data/
+config/
+runtime/
 models/
 local_knowledge/
 logs/
