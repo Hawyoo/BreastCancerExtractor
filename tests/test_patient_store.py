@@ -62,6 +62,14 @@ def create_verified_patient(client: TestClient, code: str, value: str = "LEFT") 
     return patient
 
 
+def add_verified_tnm(client: TestClient, patient_id: int, value: str) -> None:
+    observation = client.post(
+        f"/api/patients/{patient_id}/observations",
+        json={"field_name": "clinical_stage", "value": value, "confidence": "HIGH"},
+    ).json()
+    client.post(f"/api/observations/{observation['id']}/verify", json={"operator": "reviewer"})
+
+
 def test_patient_directory_is_self_contained(client, tmp_path):
     patient = create_verified_patient(client, "1234567")
     package = tmp_path / "database" / "patients" / "1234567"
@@ -134,3 +142,23 @@ def test_same_patient_verified_conflict_requires_review(tmp_path):
         assert observation["status"] == "REVIEW_REQUIRED"
         assert {item["value"] for item in observation["candidate_values"]} == {"LEFT", "RIGHT"}
         assert client.get("/api/data-migration/scan").json()["conflicts"] == []
+
+
+def test_tnm_conflict_reports_master_only_not_derived_components(tmp_path):
+    machine_a = tmp_path / "machine-a"
+    configure_machine(machine_a)
+    with TestClient(app) as client:
+        patient_a = create_verified_patient(client, "4567890")
+        add_verified_tnm(client, patient_a["id"], "cT2N1M0")
+    external = tmp_path / "external-tnm"
+    shutil.copytree(machine_a / "database" / "patients" / "4567890", external)
+
+    machine_b = tmp_path / "machine-b"
+    configure_machine(machine_b)
+    with TestClient(app) as client:
+        patient_b = create_verified_patient(client, "4567890")
+        add_verified_tnm(client, patient_b["id"], "cT1N0M0")
+        shutil.copytree(external, machine_b / "database" / "patients" / "4567890-from-machine-a")
+        scan = client.get("/api/data-migration/scan").json()
+        fields = [item["field_name"] for item in scan["conflicts"][0]["verified_conflicts"]]
+        assert fields == ["clinical_stage"]
