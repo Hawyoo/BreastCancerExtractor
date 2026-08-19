@@ -1,4 +1,15 @@
 (() => {
+  // This module is loaded after enhancements.js/derived_fields.js. Keep the
+  // post-review UI follow-up independent of whether Windows shutdown control is
+  // available (e.g. Docker still gets the inline review layout).
+  if (!document.querySelector('script[data-bce-review-inline="1"]')) {
+    const reviewScript = document.createElement("script");
+    reviewScript.src = "/review_inline.js";
+    reviewScript.defer = true;
+    reviewScript.dataset.bceReviewInline = "1";
+    document.body.appendChild(reviewScript);
+  }
+
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const port = params.get("bce_control_port");
   const token = params.get("bce_shutdown_token");
