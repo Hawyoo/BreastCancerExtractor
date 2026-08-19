@@ -31,6 +31,13 @@ DOCUMENT_FIELD_EXCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"sex"},
 }
 
+# Direct identifiers remain manual_restricted by default. The cohort explicitly
+# requires the contact number to be extracted from the medical-record cover,
+# so this one document-specific exception is intentionally narrow.
+DOCUMENT_FIELD_INCLUSIONS = {
+    "MEDICAL_RECORD_COVER": {"contact"},
+}
+
 
 @lru_cache
 def questionnaire_catalog() -> list[dict]:
@@ -126,6 +133,15 @@ def extraction_prompt(
     catalog = field_catalog()
     if groups:
         catalog = [field for field in catalog if field.get("group") in groups]
+
+    included_for_document = DOCUMENT_FIELD_INCLUSIONS.get(document_type, set())
+    if included_for_document:
+        existing = {field["key"] for field in catalog}
+        catalog.extend(
+            field for field in questionnaire_catalog()
+            if field["key"] in included_for_document and field["key"] not in existing
+        )
+
     excluded_for_document = DOCUMENT_FIELD_EXCLUSIONS.get(document_type, set())
     if excluded_for_document:
         catalog = [field for field in catalog if field.get("key") not in excluded_for_document]
