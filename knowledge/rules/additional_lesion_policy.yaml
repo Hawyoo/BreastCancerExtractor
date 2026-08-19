@@ -37,6 +37,9 @@ imaging_multiplicity:
   source_documents: [ULTRASOUND, MAMMOGRAPHY, MRI]
   multiple_definition: 只有明确至少两个恶性/乳腺癌目标病灶时才可编码MULTIPLE。
   benign_multiple_is_multiple: false
+  extraction_scope_rule: >-
+    为超声、钼靶、MRI只额外放行这一道多发题，不因此开放整个pretreatment_imaging字段组，
+    避免无关“其他影像”字段被顺带扩大抽取范围。
 
 storage:
   strategy: observation_exception_layer
@@ -51,6 +54,7 @@ lesion_specific_fields:
   - laterality
   - location
   - size_text
+  - imaging_detail
   - pathology_type
   - er
   - pr
@@ -59,6 +63,11 @@ lesion_specific_fields:
   - other_ihc
   - malignancy_basis
   - source_document_id
+
+imaging_detail_rule: >-
+  size_text和location可直接记录核心大小/方位；若同一附加病灶在超声、MRI、钼靶等检查中的大小、
+  方位或描述不同，可在imaging_detail按检查类型和时间点保留多组原始结果，而不是为了低频病例
+  再建立完整的检查实体树。
 
 patient_level_fields_not_repeated:
   - demographics
@@ -77,8 +86,15 @@ bilateral_single_rule: >-
   现有核心字段代表主病灶，附加病灶代表另一侧。若确实还存在更多恶性病灶，应先将影像学总体
   多发状态确认成MULTIPLE再继续添加。
 
+historical_visibility:
+  rule: >-
+    已建立的附加病灶不会因为后来把偏侧性改回单侧或把影像多发改回单发而从界面消失。
+    失去当前触发条件后，旧记录继续可查看和停用，但禁止新增，也不允许把旧记录继续当成新的
+    活动病灶信息修改；如原判定有误，应先纠正双侧/多发字段。
+
 safety:
   - AI抽取字段白名单中不包含additional_malignant_lesion前缀，AI不能自行建立附加病灶。
+  - additional_malignant_lesion前缀在创建时必须携带完整BCE_ADDITIONAL_MALIGNANT_LESION_V1结构，不能用普通文本绕过。
   - 附加病灶由人工在患者事后回顾界面建立，并立即人工确认。
   - 特殊JSON payload在Pydantic层再次校验malignancy_confirmed、malignancy_basis和trigger_basis。
   - 停用病灶不物理删除，active=false保留审计历史。
