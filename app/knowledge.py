@@ -40,12 +40,34 @@ DOCUMENT_FIELD_INCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"contact"},
 }
 
+# Runtime wording can be clearer than the source form while keeping stable keys.
+# These labels are used by review/data-preview/export without changing patient data.
+QUESTIONNAIRE_FIELD_OVERRIDES = {
+    "menarche_age": {
+        "description": "初潮年龄必须填写阿拉伯数字整数，不接受文字或枚举值。",
+    },
+    "has_chronic_disease": {
+        "label": "是否患慢性病",
+    },
+    "chronic_disease": {
+        "label": "慢性病（可多选）",
+        "description": "可同时选择高血压、糖尿病、冠心病和其他；多选按标准值顺序保存。",
+    },
+    "chronic_disease_other": {
+        "label": "其他慢性病（请填写）",
+    },
+}
+
 
 @lru_cache
 def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return expand_questionnaire_catalog(payload["fields"])
+    fields = expand_questionnaire_catalog(payload["fields"])
+    return [
+        {**field, **QUESTIONNAIRE_FIELD_OVERRIDES.get(field["key"], {})}
+        for field in fields
+    ]
 
 
 @lru_cache
