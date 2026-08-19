@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from app.config import settings
 from app.db import SCHEMA, utc_now
+from app.derived_fields import refresh_derived_observations
 
 PACKAGE_SCHEMA_VERSION = 1
 PACKAGE_DB_NAME = "patient.sqlite"
@@ -55,7 +56,7 @@ def _sha256(path: Path) -> str:
 
 
 def patient_packages_root() -> Path:
-    return settings.database_path.parent / "patients"
+    return settings.data_path / "patients"
 
 
 def patient_package_dir(patient_code: str) -> Path:
@@ -71,7 +72,14 @@ def delete_patient_package(patient_code: str) -> None:
 
 
 def _instance_id() -> str:
-    path = settings.database_path.parent / "instance.json"
+    path = settings.config_path / "instance.json"
+    legacy = settings.data_path / "instance.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if legacy.is_file():
+        if not path.exists():
+            legacy.replace(path)
+        else:
+            legacy.unlink(missing_ok=True)
     if path.is_file():
         try:
             value = json.loads(path.read_text(encoding="utf-8")).get("instance_id")
@@ -80,7 +88,6 @@ def _instance_id() -> str:
         except (OSError, ValueError, TypeError):
             pass
     value = uuid.uuid4().hex
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps({"instance_id": value, "created_at": utc_now()}, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -149,7 +156,7 @@ def _copy_patient_images(rows: dict[str, list[dict[str, Any]]], package_dir: Pat
     sanitized.mkdir(parents=True, exist_ok=True)
     images = []
     for document in rows["documents"]:
-        source = (settings.database_path.parent / str(document["relative_path"])).resolve()
+        source = (settings.data_path / str(document["relative_path"])).resolve()
         if not source.is_file():
             continue
         destination = sanitized / source.name
@@ -217,14 +224,34 @@ def sync_dirty_patient_packages() -> list[str]:
 
 
 def sync_missing_patient_packages() -> list[str]:
+    """Reconcile database/patients into the disposable runtime catalog.
+
+    New patient directories are imported automatically on startup. Existing
+    same-code conflicts remain explicit and are never silently overwritten.
+    The catalog can therefore be deleted and rebuilt entirely from patient
+    folders.
+    """
+    patient_packages_root().mkdir(parents=True, exist_ok=True)
+    imported: list[str] = []
+    scan = scan_patient_packages()
+    for package in scan["new"]:
+        result = import_patient_package(str(package["package_name"]), "IMPORT_NEW")
+        imported.append(str(result["patient_code"]))
+
     with _connection(settings.database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        refresh_derived_observations(connection)
         rows = connection.execute("SELECT id,patient_code FROM patients ORDER BY id").fetchall()
+
     synced = []
     for patient_id, patient_code in rows:
         if not (patient_package_dir(str(patient_code)) / PACKAGE_DB_NAME).is_file():
             sync_patient_package(int(patient_id))
             synced.append(str(patient_code))
-    return synced
+
+    # Newly materialized derived fields must also travel with patient.sqlite.
+    dirty = sync_dirty_patient_packages()
+    return sorted(set(imported + synced + dirty))
 
 
 def _read_package(directory: Path) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
