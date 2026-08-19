@@ -2,6 +2,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from app.native_launcher import APP_HOST, _browser_control_url, _start_shutdown_control
 
@@ -47,7 +48,7 @@ def test_shutdown_control_requires_token_and_signals(tmp_path):
 
 
 def test_shutdown_button_is_windows_launcher_only():
-    source = (tmp_path := __import__("pathlib").Path(__file__).parents[1] / "app" / "static" / "shutdown.js").read_text(encoding="utf-8")
+    source = (Path(__file__).parents[1] / "app" / "static" / "shutdown.js").read_text(encoding="utf-8")
     assert "bce_control_port" in source
     assert "bce_shutdown_token" in source
     assert "关闭程序" in source
