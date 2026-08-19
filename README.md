@@ -10,6 +10,17 @@
 
 Windows 版默认只需要 **OCR**，**Ollama / 本地 AI 是可选项**。
 
+> [!CAUTION]
+> **严重警告：Windows Native / Portable 请务必放在纯英文（ASCII）路径下运行。**
+> 
+> 不要把程序放在包含中文、日文、韩文或其他非 ASCII 字符的目录中。PaddleOCR / PaddleX 在 Windows 下可能能够看到模型目录，却在底层推理阶段无法正常打开 `inference.json` 等模型文件，最终表现为 **`OCR unavailable: 500 Internal Server Error`**。
+> 
+> **错误示例：** `F:\临床数据提取\BreastCancerExtractor\`
+> 
+> **推荐示例：** `F:\BreastCancerExtractor\`、`D:\BCE\`
+> 
+> 如果同一份 `dist` 在本地英文路径可以 OCR，但复制到移动硬盘后 OCR 失败，请首先检查**完整路径中是否包含中文或其他非 ASCII 字符**。不要先重装 PaddleOCR，也不要先删除模型。
+
 1. GitHub：`Code → Download ZIP`
 2. 完整解压项目。
 3. 构建电脑安装 `uv`。
@@ -66,6 +77,9 @@ build-portable-with-ollama.bat
 ## 一、Windows Native / Portable（推荐）
 
 Windows 版本使用 PyInstaller onedir。目标电脑运行构建后的 Portable 时不需要 Python、uv、Conda 或 Docker。
+
+> [!CAUTION]
+> **Windows 路径要求：请使用纯英文 / ASCII 路径。** 例如 `F:\BreastCancerExtractor\`。如果将同一 Portable 移动到 `F:\临床数据提取\BreastCancerExtractor\` 等含中文目录的路径后出现 OCR 500、`Cannot open ... inference.json`、模型文件明明存在却无法读取等问题，应先把整个目录移回纯英文路径再重试。
 
 ### 默认精简构建
 
