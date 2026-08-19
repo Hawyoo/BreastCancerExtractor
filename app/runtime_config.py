@@ -4,12 +4,15 @@ from urllib.parse import urlparse
 
 from app.config import settings
 
+DISABLED_OLLAMA_ENDPOINT = "disabled://local-ai"
+
 
 def ollama_provider_endpoints() -> dict[str, str]:
     native_url = settings.ollama_url
     if urlparse(native_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
         native_url = "http://127.0.0.1:11434"
     return {
+        "DISABLED": DISABLED_OLLAMA_ENDPOINT,
         "DOCKER": "http://ollama:11434",
         "WINDOWS_HOST": (
             "http://host.docker.internal:11434"
@@ -81,6 +84,8 @@ def get_selected_ollama_model(provider: str | None = None) -> str:
 
 def save_selected_ollama_model(model_name: str, provider: str | None = None) -> dict[str, str]:
     selected_provider = provider or get_ollama_provider()["provider"]
+    if selected_provider == "DISABLED":
+        raise ValueError("Local AI is disabled")
     if selected_provider not in ollama_provider_endpoints():
         raise ValueError("Unsupported Ollama provider")
     payload = load_runtime_config()
