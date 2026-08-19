@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all, copy_metadata, is_module_or_submodule
 
 
 root = Path(SPECPATH)
@@ -11,8 +11,19 @@ datas = [
 binaries = []
 hiddenimports = ["app.main", "ocr.service"]
 
+
+def paddle_submodule_filter(name):
+    return not is_module_or_submodule(name, "paddle.jit.sot")
+
+
 for package in ("paddle", "paddleocr", "paddlex"):
-    package_datas, package_binaries, package_hidden = collect_all(package)
+    if package == "paddle":
+        package_datas, package_binaries, package_hidden = collect_all(
+            package,
+            filter_submodules=paddle_submodule_filter,
+        )
+    else:
+        package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_hidden
@@ -38,7 +49,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["pytest", "ruff"],
+    excludes=["pytest", "ruff", "paddle.jit.sot"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
