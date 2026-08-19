@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.knowledge import extraction_prompt, field_catalog, questionnaire_field_index
+from app.knowledge import extraction_prompt, field_catalog, questionnaire_catalog, questionnaire_field_index
 from app.models import ADDITIONAL_LESION_SCHEMA, ObservationCreate, ObservationEdit
 
 ROOT = Path(__file__).parents[1]
@@ -39,6 +39,11 @@ def test_mammography_historical_key_is_promoted_to_imaging_wide_question():
         {"label": "单发", "value": "SINGLE"},
         {"label": "多发", "value": "MULTIPLE"},
     ]
+
+    keys = [field["key"] for field in questionnaire_catalog()]
+    assert keys.index(MULTIPLICITY_FIELD) < keys.index("pre_us_available")
+    assert keys.index(MULTIPLICITY_FIELD) < keys.index("pre_mmg_available")
+    assert keys.index(MULTIPLICITY_FIELD) < keys.index("pre_mri_available")
 
 
 @pytest.mark.parametrize("document_type", ["ULTRASOUND", "MAMMOGRAPHY", "MRI"])
