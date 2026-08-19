@@ -1,11 +1,11 @@
-version: 0.3.0
+version: 0.4.0
 name: breast_tnm_recorded_then_inferred
 status: policy_only_ruleset_pending
 
 priority:
-  - If an explicit TNM component or stage group is recorded, preserve it as RECORDED.
-  - If multiple recorded values conflict, preserve every observation and set REVIEW_REQUIRED.
-  - Only missing components may be inferred; an inferred value never overwrites a recorded value.
+  - Preserve an explicitly recorded complete TNM string as RECORDED when it matches the clinical/pathological time context.
+  - If multiple recorded TNM values conflict, preserve every observation and set REVIEW_REQUIRED.
+  - Only missing TNM components may be inferred; an inferred value never overwrites a recorded value.
   - Postoperative histology and regional-node pathology use the surgical pathology report before discharge summaries or operative notes.
 
 contexts:
@@ -46,9 +46,19 @@ inference:
     - silently_resolving_conflicting_recorded_stages
 
 stage_group:
-  infer_only_if_all_required_factors_for_selected_stage_group_type_are_available: true
-  otherwise: null
-  distinguish: [ANATOMIC, PROGNOSTIC, NOT_SPECIFIED]
+  store: false
+  infer: false
+  rule: 当前项目不保存AJCC解剖学/预后Stage Group；只保留完整cTNM/ycTNM与pTNM/ypTNM主字段。
+
+postprocessing:
+  after_human_verification:
+    - source: clinical_stage
+      outputs: [clinical_t_component, clinical_n_component, clinical_m_component]
+      mode: DERIVED_READONLY
+    - source: pathological_stage
+      outputs: [pathological_t_component, pathological_n_component, pathological_m_component]
+      mode: DERIVED_READONLY
+  rule: T/N/M拆分字段只能由已人工确认的完整TNM主字段生成；不允许单独修改，修改主字段后自动重算。
 
 review:
   always_required_for_inferred_tnm: true
