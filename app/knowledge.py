@@ -6,6 +6,23 @@ import yaml
 from app.config import settings
 from app.derived_fields import expand_questionnaire_catalog
 
+IMAGING_MULTIPLICITY_FIELD = "pre_mmg_single_lesion"
+IMAGING_DOCUMENT_TYPES = {"ULTRASOUND", "MAMMOGRAPHY", "MRI"}
+IMAGING_MULTIPLICITY_OPTIONS = [
+    {"label": "单发", "value": "SINGLE"},
+    {"label": "多发", "value": "MULTIPLE"},
+]
+IMAGING_MULTIPLICITY_RULE = {
+    "id": "malignant_lesion_multiplicity_only",
+    "field": IMAGING_MULTIPLICITY_FIELD,
+    "description": (
+        "该稳定key历史上来自钼靶问卷，但BCE现在将它作为影像学总体问题使用。"
+        "只有明确属于乳腺癌/恶性目标病灶的数量才参与SINGLE/MULTIPLE判断；"
+        "多发良性结节、囊肿、纤维腺瘤、增生结节等绝不能据此输出MULTIPLE。"
+        "若不能明确至少两个恶性病灶，则不要仅因报告写有多个结节而判断为MULTIPLE。"
+    ),
+}
+
 DOCUMENT_GROUPS = {
     "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
     "ADMISSION": {
@@ -18,9 +35,9 @@ DOCUMENT_GROUPS = {
         "staging",
     },
     "DISCHARGE": {"diagnosis", "staging", "surgery", "neoadjuvant", "adjuvant_treatment"},
-    "ULTRASOUND": {"pretreatment_ultrasound", "post_neoadjuvant_imaging"},
-    "MAMMOGRAPHY": {"pretreatment_mammography"},
-    "MRI": {"pretreatment_mri", "post_neoadjuvant_imaging"},
+    "ULTRASOUND": {"pretreatment_imaging", "pretreatment_ultrasound", "post_neoadjuvant_imaging"},
+    "MAMMOGRAPHY": {"pretreatment_imaging", "pretreatment_mammography"},
+    "MRI": {"pretreatment_imaging", "pretreatment_mri", "post_neoadjuvant_imaging"},
     "BIOPSY_PATHOLOGY": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "biomarkers", "diagnosis", "staging"},
     "SURGICAL_PATHOLOGY": {"surgical_pathology", "biomarkers", "diagnosis", "staging", "treatment_response"},
     "IHC": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "surgical_pathology", "biomarkers"},
@@ -73,6 +90,18 @@ QUESTIONNAIRE_FIELD_OVERRIDES = {
     },
     "chronic_disease_other": {
         "label": "其他慢性病（请填写）",
+    },
+    # Keep the historical key so existing patient data stays readable, but
+    # promote the question from a mammography-only child to an imaging-wide
+    # malignant-lesion multiplicity field.
+    IMAGING_MULTIPLICITY_FIELD: {
+        "label": "影像学恶性病灶是否多发",
+        "group": "pretreatment_imaging",
+        "depends_on": None,
+        "description": (
+            "仅统计明确恶性/乳腺癌目标病灶。多个良性结节、囊肿、纤维腺瘤或其他明确良性病灶"
+            "不构成MULTIPLE；只有明确至少两个恶性病灶时才填写MULTIPLE。"
+        ),
     },
 }
 
@@ -133,6 +162,8 @@ def _allowed_values_for_field(field: dict) -> object:
 
 
 def _field_options_for_field(field: dict, option_index: dict[str, list[dict[str, str]]]) -> list[dict[str, str]]:
+    if field.get("key") == IMAGING_MULTIPLICITY_FIELD:
+        return [dict(item) for item in IMAGING_MULTIPLICITY_OPTIONS]
     options = [dict(item) for item in option_index.get(field["key"], [])]
     if field.get("type") == "yes_no_unknown":
         existing = {str(item["value"]).upper() for item in options}
@@ -245,7 +276,9 @@ def extraction_prompt(
         for field in catalog
     ]
     allowed = {field["key"] for field in catalog}
-    rules = document_rules().get(document_type, [])
+    rules = list(document_rules().get(document_type, []))
+    if document_type in IMAGING_DOCUMENT_TYPES:
+        rules.append(IMAGING_MULTIPLICITY_RULE)
     preferences = data_processing_preferences()
     prompt = (
         f"文档类型：{document_type}\n\n"
