@@ -1,145 +1,309 @@
-version: 0.1.0
-title: 文档类型与 ROI 分组映射
+version: 0.2.0
+title: 文档类型与 ROI 原子映射
 description: >-
-  ROI 是便于人工框选的语义区域，不是一项 ROI 对应一项最终字段。
-  一个 ROI 可以向 cohort_fields.yaml 中的多个字段提供证据，LLM 仍须逐字段输出并保留来源。
-
+  ROI 采用原子化定义：一个 ROI 只对应一个最终字段或一个元数据项目。即使多个项目出现在同一段连续文字中，也应分别选择 ROI 类型并分别框选；允许 ROI 重叠。
 global_rules:
-  - ROI 应覆盖字段名、字段值及必要上下文，不应只框选孤立数字。
-  - 优先使用一个语义完整的大框，避免为同一段连续文字逐字段重复画框。
-  - 一张图片允许包含多个 ROI，同一 ROI 允许支持多个最终字段。
-  - ROI 只是识别重点和证据定位；未框选区域仍可参与整页 OCR，除非用户明确设置仅识别 ROI。
+  - 每个 ROI 只允许包含一个 target_fields 或 metadata_fields 项目，禁止一个 ROI 同时映射多个项目。
+  - ROI 应覆盖该单项的字段名、字段值及必要上下文，不应只框选孤立数字。
+  - 多个项目位于同一段文字时，应逐项建立 ROI；不同 ROI 可以重叠，不因文字连续而合并语义项目。
+  - 一张图片允许包含多个 ROI；每个 ROI 的高信度语义归属只作用于自己的单项。
+  - ROI 只是识别重点和证据定位；未框选区域仍参与整页 OCR。
   - 脱敏遮盖区域与信息 ROI 必须分开保存，脱敏区域不得进入 OCR、证据图或模型输入。
-
 imaging_rules:
-  - 影像 ROI 只标注报告中明确描述的乳腺恶性病灶、疑似恶性病灶及其相关区域淋巴结，不把明确良性病灶混入目标肿块。
-  - 每份影像必须尽量保留检查日期，并记录治疗阶段 PRE_TREATMENT、POST_NEOADJUVANT 或 UNKNOWN。
-  - 若患者接受新辅助治疗，必须依据检查日期与新辅助治疗日期区分治疗前和治疗后检查；两者分别保存，不得覆盖。
-  - 同一检查有多发病灶时应保留所有病灶观察值，并标记 index lesion 候选；在研究汇总口径确定前不得擅自只保留最大病灶。
-  - 肿块大小优先保留完整原始尺寸，同时按字段要求换算并输出最大径 mm。
-  - 影像学缓解优先抽取报告原文；若需依据尺寸变化推导，必须标记 INFERRED 并进入人工复核。
-
+  - 影像 ROI 只标注明确恶性/乳腺癌目标病灶相关项目；明确良性病灶不得混入恶性肿块 ROI。
+  - 检查日期和治疗阶段必须拆为两个独立 ROI 项目。
+  - 治疗前与新辅助治疗后影像项目必须分别框选和保存，不得在同一 ROI 中合并。
+  - 同一检查有多个明确恶性病灶时可分别为各病灶重复绘制相同类型 ROI；不得因多个良性结节创建恶性病灶 ROI。
+  - 肿块大小、位置、距乳头距离、距皮肤距离、淋巴结和缓解情况分别使用独立 ROI。
 documents:
   MEDICAL_RECORD_COVER:
     label: 病案首页
     regions:
-      - {key: cover_identity, label: 病案号与出生日期, target_fields: [record_number, birth_date]}
-      - {key: cover_contact, label: 联系方式, target_fields: [contact]}
-      - {key: cover_occupation, label: 职业, target_fields: [occupation]}
-      - {key: cover_body_measurements, label: 身高与体重, target_fields: [height_cm, weight_kg]}
-
+      - {key: record_number, label: "病案号", target_fields: [record_number]}
+      - {key: birth_date, label: "出生日期", target_fields: [birth_date]}
+      - {key: contact, label: "联系方式", target_fields: [contact]}
+      - {key: occupation, label: "职业", target_fields: [occupation]}
+      - {key: height_cm, label: "身高", target_fields: [height_cm]}
+      - {key: weight_kg, label: "体重", target_fields: [weight_kg]}
   ADMISSION:
     label: 入院记录
     regions:
-      - {key: admission_identity, label: 病案号、性别与职业, target_fields: [record_number, sex, occupation]}
-      - {key: chronic_and_other_cancer_history, label: 既往史、慢性病与其他癌种, target_fields: [has_chronic_disease, chronic_disease, chronic_disease_other, concurrent_other_cancer, concurrent_other_cancer_detail]}
-      - {key: prior_breast_history, label: 乳腺癌及既往乳腺手术史, target_fields: [first_breast_cancer, prior_breast_surgery, prior_breast_surgery_date, prior_breast_surgery_type]}
-      - {key: reproductive_history, label: 婚育史, target_fields: [has_given_birth, parity_count, childbirth_age]}
-      - {key: menstrual_history, label: 月经与绝经史, target_fields: [menarche_age, menopausal_status, menopause_age]}
-      - {key: family_history, label: 家族史, target_fields: [has_family_history, family_history_detail]}
-      - {key: lifestyle_history, label: 吸烟与饮酒史, target_fields: [smoking_history, drinking_history]}
-      - {key: presentation_disease, label: 偏侧性、来院转移与转移部位, target_fields: [breast_laterality, metastatic_at_presentation, metastatic_site]}
-
+      - {key: record_number, label: "病案号", target_fields: [record_number]}
+      - {key: sex, label: "性别", target_fields: [sex]}
+      - {key: occupation, label: "职业", target_fields: [occupation]}
+      - {key: has_chronic_disease, label: "是否有慢性病史", target_fields: [has_chronic_disease]}
+      - {key: chronic_disease, label: "慢性病史", target_fields: [chronic_disease]}
+      - {key: chronic_disease_other, label: "其他慢性病", target_fields: [chronic_disease_other]}
+      - {key: concurrent_other_cancer, label: "入院时是否合并其他癌种", target_fields: [concurrent_other_cancer]}
+      - {key: concurrent_other_cancer_detail, label: "其他癌种详情", target_fields: [concurrent_other_cancer_detail]}
+      - {key: first_breast_cancer, label: "是否首次患乳腺癌", target_fields: [first_breast_cancer]}
+      - {key: prior_breast_surgery, label: "既往是否有乳腺手术史", target_fields: [prior_breast_surgery]}
+      - {key: prior_breast_surgery_date, label: "既往乳腺手术时间", target_fields: [prior_breast_surgery_date]}
+      - {key: prior_breast_surgery_type, label: "既往乳腺手术术式", target_fields: [prior_breast_surgery_type]}
+      - {key: has_given_birth, label: "是否生育", target_fields: [has_given_birth]}
+      - {key: parity_count, label: "生育胎数", target_fields: [parity_count]}
+      - {key: childbirth_age, label: "生育年龄", target_fields: [childbirth_age]}
+      - {key: menarche_age, label: "初潮年龄", target_fields: [menarche_age]}
+      - {key: menopausal_status, label: "是否绝经", target_fields: [menopausal_status]}
+      - {key: menopause_age, label: "绝经年龄", target_fields: [menopause_age]}
+      - {key: has_family_history, label: "是否有家族史", target_fields: [has_family_history]}
+      - {key: family_history_detail, label: "家族史详情", target_fields: [family_history_detail]}
+      - {key: smoking_history, label: "是否有吸烟史", target_fields: [smoking_history]}
+      - {key: drinking_history, label: "是否有饮酒史", target_fields: [drinking_history]}
+      - {key: breast_laterality, label: "乳腺癌偏侧性", target_fields: [breast_laterality]}
+      - {key: metastatic_at_presentation, label: "来院时是否远处转移", target_fields: [metastatic_at_presentation]}
+      - {key: metastatic_site, label: "转移部位", target_fields: [metastatic_site]}
   SURGERY:
     label: 手术记录
     regions:
-      - {key: surgery_date, label: 手术日期, target_fields: [surgery_performed, surgery_date]}
-      - {key: breast_surgery, label: 乳房手术方式, target_fields: [surgery_type]}
-      - {key: axillary_surgery, label: 腋窝手术方式, target_fields: [surgery_type]}
-      - {key: reconstruction, label: 是否重建及重建方式, target_fields: [reconstruction_performed, reconstruction_type]}
-      - {key: operative_findings, label: 术中所见, target_fields: [other_collected_information]}
-
+      - {key: surgery_performed, label: "是否行手术", target_fields: [surgery_performed]}
+      - {key: surgery_date, label: "手术日期", target_fields: [surgery_date]}
+      - {key: breast_surgery_type_roi, label: "乳房手术方式", target_fields: [surgery_type]}
+      - {key: axillary_surgery_type_roi, label: "腋窝手术方式", target_fields: [surgery_type]}
+      - {key: reconstruction_performed, label: "是否重建", target_fields: [reconstruction_performed]}
+      - {key: reconstruction_type, label: "重建方式", target_fields: [reconstruction_type]}
+      - {key: operative_findings_roi, label: "术中所见", target_fields: [other_collected_information]}
   DISCHARGE:
     label: 出院记录
     regions:
-      - {key: discharge_diagnosis, label: 出院诊断、偏侧性与确诊日期, target_fields: [breast_laterality, breast_cancer_type, breast_cancer_diagnosis_date]}
-      - {key: tnm_stage, label: TNM、临床分期与病理分期, target_fields: [clinical_stage, pathological_stage]}
-      - {key: pathology_summary, label: 穿刺及术后病理摘要, target_fields: [primary_pathology_type, primary_pathology_grade, postop_tumor_pathology_type, postop_tumor_pathology_grade, postop_node_metastasis]}
-      - {key: ihc_summary, label: 免疫组化摘要, target_fields: [primary_er, primary_pr, primary_her2, primary_ki67, postop_tumor_er, postop_tumor_pr, postop_tumor_her2, postop_tumor_ki67]}
-      - {key: fish_summary, label: FISH结果, target_fields: [fish_result]}
-      - {key: surgery_summary, label: 手术摘要, target_fields: [surgery_performed, surgery_date, surgery_type, reconstruction_performed, reconstruction_type]}
-      - {key: treatment_summary, label: 治疗经过与方案, target_fields: [neoadjuvant_received, neoadjuvant_regimen, neoadjuvant_cycles, postoperative_radiotherapy, postoperative_chemotherapy, postoperative_chemotherapy_regimen, postoperative_chemotherapy_cycles, postoperative_endocrine, postoperative_endocrine_regimen, postoperative_targeted, postoperative_targeted_regimen, postoperative_immunotherapy, postoperative_immunotherapy_regimen]}
-      - {key: followup_plan, label: 出院用药与随访计划, target_fields: [last_visit_date, other_collected_information]}
-
+      - {key: breast_laterality, label: "乳腺癌偏侧性", target_fields: [breast_laterality]}
+      - {key: breast_cancer_type, label: "乳腺癌类型", target_fields: [breast_cancer_type]}
+      - {key: breast_cancer_diagnosis_date, label: "乳腺癌确诊日期", target_fields: [breast_cancer_diagnosis_date]}
+      - {key: clinical_stage, label: "临床TNM分期", target_fields: [clinical_stage]}
+      - {key: pathological_stage, label: "病理TNM分期", target_fields: [pathological_stage]}
+      - {key: primary_pathology_type, label: "原发灶病理类型", target_fields: [primary_pathology_type]}
+      - {key: primary_pathology_grade, label: "原发灶病理分级", target_fields: [primary_pathology_grade]}
+      - {key: postop_tumor_pathology_type, label: "术后肿块病理类型", target_fields: [postop_tumor_pathology_type]}
+      - {key: postop_tumor_pathology_grade, label: "术后肿块病理分级", target_fields: [postop_tumor_pathology_grade]}
+      - {key: postop_node_metastasis, label: "术后淋巴结转移", target_fields: [postop_node_metastasis]}
+      - {key: primary_er, label: "原发灶ER", target_fields: [primary_er]}
+      - {key: primary_pr, label: "原发灶PR", target_fields: [primary_pr]}
+      - {key: primary_her2, label: "原发灶HER2", target_fields: [primary_her2]}
+      - {key: primary_ki67, label: "原发灶Ki-67", target_fields: [primary_ki67]}
+      - {key: postop_tumor_er, label: "术后肿块ER", target_fields: [postop_tumor_er]}
+      - {key: postop_tumor_pr, label: "术后肿块PR", target_fields: [postop_tumor_pr]}
+      - {key: postop_tumor_her2, label: "术后肿块HER2", target_fields: [postop_tumor_her2]}
+      - {key: postop_tumor_ki67, label: "术后肿块Ki-67", target_fields: [postop_tumor_ki67]}
+      - {key: fish_result, label: "FISH结果", target_fields: [fish_result]}
+      - {key: surgery_performed, label: "是否行手术", target_fields: [surgery_performed]}
+      - {key: surgery_date, label: "手术日期", target_fields: [surgery_date]}
+      - {key: surgery_type, label: "手术方式", target_fields: [surgery_type]}
+      - {key: reconstruction_performed, label: "是否重建", target_fields: [reconstruction_performed]}
+      - {key: reconstruction_type, label: "重建方式", target_fields: [reconstruction_type]}
+      - {key: neoadjuvant_received, label: "是否接受新辅助治疗", target_fields: [neoadjuvant_received]}
+      - {key: neoadjuvant_regimen, label: "新辅助方案", target_fields: [neoadjuvant_regimen]}
+      - {key: neoadjuvant_cycles, label: "新辅助周期", target_fields: [neoadjuvant_cycles]}
+      - {key: postoperative_radiotherapy, label: "术后是否放疗", target_fields: [postoperative_radiotherapy]}
+      - {key: postoperative_chemotherapy, label: "术后是否化疗", target_fields: [postoperative_chemotherapy]}
+      - {key: postoperative_chemotherapy_regimen, label: "术后化疗方案", target_fields: [postoperative_chemotherapy_regimen]}
+      - {key: postoperative_chemotherapy_cycles, label: "术后化疗周期", target_fields: [postoperative_chemotherapy_cycles]}
+      - {key: postoperative_endocrine, label: "术后是否内分泌治疗", target_fields: [postoperative_endocrine]}
+      - {key: postoperative_endocrine_regimen, label: "术后内分泌方案", target_fields: [postoperative_endocrine_regimen]}
+      - {key: postoperative_targeted, label: "术后是否靶向治疗", target_fields: [postoperative_targeted]}
+      - {key: postoperative_targeted_regimen, label: "术后靶向方案", target_fields: [postoperative_targeted_regimen]}
+      - {key: postoperative_immunotherapy, label: "术后是否免疫治疗", target_fields: [postoperative_immunotherapy]}
+      - {key: postoperative_immunotherapy_regimen, label: "术后免疫治疗方案", target_fields: [postoperative_immunotherapy_regimen]}
+      - {key: last_visit_date, label: "末次就诊时间", target_fields: [last_visit_date]}
+      - {key: discharge_followup_plan_roi, label: "随访计划", target_fields: [other_collected_information]}
   ULTRASOUND:
     label: 超声
     regions:
-      - {key: imaging_date_phase, label: 检查日期与治疗阶段, metadata_fields: [exam_date, treatment_phase]}
-      - {key: malignant_lesion_size, label: 恶性肿块大小, target_fields: [pre_us_available, pre_us_tumor_size_mm, post_neoadj_us_available, post_neoadj_us_size_mm]}
-      - {key: malignant_lesion_location, label: 恶性肿块位置及距乳头/皮肤距离, target_fields: [pre_us_tumor_location, pre_us_nipple_distance_cm, pre_us_skin_distance]}
-      - {key: regional_nodes, label: 区域淋巴结情况, target_fields: [pre_us_nodes_normal, pre_us_nodes_detail, post_neoadj_us_nodes]}
-      - {key: ultrasound_birads, label: BI-RADS分级, target_fields: [other_pretreatment_imaging]}
-      - {key: post_neoadj_response, label: 新辅助后肿块及淋巴结缓解, target_fields: [post_neoadj_us_tumor_response, post_neoadj_us_nodes_response]}
-
+      - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
+      - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: pre_us_available, label: "是否有治疗前超声", target_fields: [pre_us_available]}
+      - {key: pre_us_tumor_size_mm, label: "治疗前超声恶性肿块大小", target_fields: [pre_us_tumor_size_mm]}
+      - {key: pre_us_tumor_location, label: "治疗前超声恶性肿块位置", target_fields: [pre_us_tumor_location]}
+      - {key: pre_us_nipple_distance_cm, label: "超声肿块距乳头距离", target_fields: [pre_us_nipple_distance_cm]}
+      - {key: pre_us_skin_distance, label: "超声肿块距皮肤距离", target_fields: [pre_us_skin_distance]}
+      - {key: pre_us_nodes_normal, label: "治疗前超声淋巴结是否正常", target_fields: [pre_us_nodes_normal]}
+      - {key: pre_us_nodes_detail, label: "治疗前超声淋巴结详情", target_fields: [pre_us_nodes_detail]}
+      - {key: ultrasound_birads_roi, label: "超声BI-RADS分级", target_fields: [other_pretreatment_imaging]}
+      - {key: post_neoadj_us_available, label: "是否有新辅助后超声", target_fields: [post_neoadj_us_available]}
+      - {key: post_neoadj_us_size_mm, label: "新辅助后超声肿块大小", target_fields: [post_neoadj_us_size_mm]}
+      - {key: post_neoadj_us_nodes, label: "新辅助后超声淋巴结情况", target_fields: [post_neoadj_us_nodes]}
+      - {key: post_neoadj_us_tumor_response, label: "新辅助后超声肿块缓解", target_fields: [post_neoadj_us_tumor_response]}
+      - {key: post_neoadj_us_nodes_response, label: "新辅助后超声淋巴结缓解", target_fields: [post_neoadj_us_nodes_response]}
   MAMMOGRAPHY:
     label: 钼靶
     regions:
-      - {key: imaging_date_phase, label: 检查日期与治疗阶段, metadata_fields: [exam_date, treatment_phase]}
-      - {key: lesion_number_and_size, label: 恶性肿块单发/多发及大小, target_fields: [pre_mmg_available, pre_mmg_single_lesion, pre_mmg_other_single, pre_mmg_multifocal]}
-      - {key: malignant_lesion_location, label: 恶性肿块位置及距乳头/皮肤距离, target_fields: [pre_mmg_other_single, pre_mmg_multifocal]}
-      - {key: mammography_birads, label: BI-RADS分级, target_fields: [pre_mmg_birads, pre_mmg_birads_detail]}
-      - {key: calcification, label: 钙化情况, target_fields: [pre_mmg_calcification]}
-      - {key: regional_nodes, label: 区域淋巴结情况, target_fields: [pre_mmg_nodes]}
-      - {key: other_mammography, label: 其他钼靶结果, target_fields: [pre_mmg_other_single, pre_mmg_multifocal]}
-
+      - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
+      - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: pre_mmg_available, label: "是否有治疗前钼靶", target_fields: [pre_mmg_available]}
+      - {key: pre_mmg_single_lesion, label: "影像学恶性病灶是否多发", target_fields: [pre_mmg_single_lesion]}
+      - {key: pre_mmg_other_single, label: "单发恶性病灶钼靶结果", target_fields: [pre_mmg_other_single]}
+      - {key: pre_mmg_multifocal, label: "多发恶性病灶钼靶结果", target_fields: [pre_mmg_multifocal]}
+      - {key: pre_mmg_birads, label: "钼靶BI-RADS分级", target_fields: [pre_mmg_birads]}
+      - {key: pre_mmg_birads_detail, label: "钼靶BI-RADS补充", target_fields: [pre_mmg_birads_detail]}
+      - {key: pre_mmg_calcification, label: "钼靶钙化情况", target_fields: [pre_mmg_calcification]}
+      - {key: pre_mmg_nodes, label: "钼靶淋巴结情况", target_fields: [pre_mmg_nodes]}
   MRI:
     label: MRI
     regions:
-      - {key: imaging_date_phase, label: 检查日期与治疗阶段, metadata_fields: [exam_date, treatment_phase]}
-      - {key: malignant_lesion_size, label: 恶性肿块大小, target_fields: [pre_mri_available, pre_mri_tumor_size_mm, post_neoadj_mri_available, post_neoadj_mri_size_mm]}
-      - {key: malignant_lesion_location, label: 恶性肿块位置及距乳头/皮肤距离, target_fields: [other_pretreatment_imaging]}
-      - {key: regional_nodes, label: 区域淋巴结情况, target_fields: [pre_mri_nodes_normal, pre_mri_nodes_detail, post_neoadj_mri_nodes]}
-      - {key: mri_birads, label: BI-RADS分级, target_fields: [other_pretreatment_imaging]}
-      - {key: post_neoadj_response, label: 新辅助后肿块及淋巴结缓解, target_fields: [post_neoadj_mri_tumor_response, post_neoadj_mri_nodes_response]}
-
+      - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
+      - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: pre_mri_available, label: "是否有治疗前MRI", target_fields: [pre_mri_available]}
+      - {key: pre_mri_tumor_size_mm, label: "治疗前MRI恶性肿块大小", target_fields: [pre_mri_tumor_size_mm]}
+      - {key: mri_malignant_lesion_location_roi, label: "MRI恶性肿块位置", target_fields: [other_pretreatment_imaging]}
+      - {key: mri_birads_roi, label: "MRI BI-RADS分级", target_fields: [other_pretreatment_imaging]}
+      - {key: pre_mri_nodes_normal, label: "治疗前MRI淋巴结是否正常", target_fields: [pre_mri_nodes_normal]}
+      - {key: pre_mri_nodes_detail, label: "治疗前MRI淋巴结详情", target_fields: [pre_mri_nodes_detail]}
+      - {key: post_neoadj_mri_available, label: "是否有新辅助后MRI", target_fields: [post_neoadj_mri_available]}
+      - {key: post_neoadj_mri_size_mm, label: "新辅助后MRI肿块大小", target_fields: [post_neoadj_mri_size_mm]}
+      - {key: post_neoadj_mri_nodes, label: "新辅助后MRI淋巴结情况", target_fields: [post_neoadj_mri_nodes]}
+      - {key: post_neoadj_mri_tumor_response, label: "新辅助后MRI肿块缓解", target_fields: [post_neoadj_mri_tumor_response]}
+      - {key: post_neoadj_mri_nodes_response, label: "新辅助后MRI淋巴结缓解", target_fields: [post_neoadj_mri_nodes_response]}
   BIOPSY_PATHOLOGY:
     label: 穿刺病理
     regions:
-      - {key: specimen_and_date, label: 标本部位与报告日期, metadata_fields: [specimen_site, report_date]}
-      - {key: primary_pathology, label: 原发灶病理类型与分级, target_fields: [primary_biopsy_performed, primary_pathology_type, primary_pathology_grade]}
-      - {key: primary_ihc, label: 原发灶ER/PR/HER2/Ki-67及其他IHC, target_fields: [primary_er, primary_er_detail, primary_pr, primary_pr_detail, primary_her2, primary_ki67, primary_ki67_detail, primary_other_ihc, primary_molecular_subtype]}
-      - {key: node_pathology, label: 淋巴结病理类型与分级, target_fields: [node_biopsy_performed, node_pathology_type, node_pathology_grade]}
-      - {key: node_ihc, label: 淋巴结ER/PR/HER2/Ki-67及其他IHC, target_fields: [node_er, node_er_detail, node_pr, node_pr_detail, node_her2, node_ki67, node_ki67_detail, node_other_ihc_1, node_other_ihc_2, node_molecular_subtype]}
-      - {key: metastasis_pathology, label: 转移灶病理类型与分级, target_fields: [metastasis_biopsy_performed, metastasis_pathology_type, metastasis_pathology_grade]}
-      - {key: metastasis_ihc, label: 转移灶ER/PR/HER2/Ki-67及其他IHC, target_fields: [metastasis_er, metastasis_er_detail, metastasis_pr, metastasis_pr_detail, metastasis_her2, metastasis_ki67, metastasis_ki67_detail, metastasis_other_ihc, metastasis_molecular_subtype]}
-      - {key: biopsy_fish, label: FISH结果, target_fields: [fish_result]}
-
+      - {key: meta_specimen_site, label: "标本部位", metadata_fields: [specimen_site]}
+      - {key: meta_report_date, label: "报告日期", metadata_fields: [report_date]}
+      - {key: primary_biopsy_performed, label: "是否行原发灶穿刺", target_fields: [primary_biopsy_performed]}
+      - {key: primary_pathology_type, label: "原发灶病理类型", target_fields: [primary_pathology_type]}
+      - {key: primary_pathology_grade, label: "原发灶病理分级", target_fields: [primary_pathology_grade]}
+      - {key: primary_er, label: "原发灶ER", target_fields: [primary_er]}
+      - {key: primary_er_detail, label: "原发灶ER补充", target_fields: [primary_er_detail]}
+      - {key: primary_pr, label: "原发灶PR", target_fields: [primary_pr]}
+      - {key: primary_pr_detail, label: "原发灶PR补充", target_fields: [primary_pr_detail]}
+      - {key: primary_her2, label: "原发灶HER2", target_fields: [primary_her2]}
+      - {key: primary_ki67, label: "原发灶Ki-67", target_fields: [primary_ki67]}
+      - {key: primary_ki67_detail, label: "原发灶Ki-67补充", target_fields: [primary_ki67_detail]}
+      - {key: primary_other_ihc, label: "原发灶其他IHC", target_fields: [primary_other_ihc]}
+      - {key: primary_molecular_subtype, label: "原发灶分子分型", target_fields: [primary_molecular_subtype]}
+      - {key: node_biopsy_performed, label: "是否行淋巴结穿刺", target_fields: [node_biopsy_performed]}
+      - {key: node_pathology_type, label: "淋巴结病理类型", target_fields: [node_pathology_type]}
+      - {key: node_pathology_grade, label: "淋巴结病理分级", target_fields: [node_pathology_grade]}
+      - {key: node_er, label: "淋巴结ER", target_fields: [node_er]}
+      - {key: node_er_detail, label: "淋巴结ER补充", target_fields: [node_er_detail]}
+      - {key: node_pr, label: "淋巴结PR", target_fields: [node_pr]}
+      - {key: node_pr_detail, label: "淋巴结PR补充", target_fields: [node_pr_detail]}
+      - {key: node_her2, label: "淋巴结HER2", target_fields: [node_her2]}
+      - {key: node_ki67, label: "淋巴结Ki-67", target_fields: [node_ki67]}
+      - {key: node_ki67_detail, label: "淋巴结Ki-67补充", target_fields: [node_ki67_detail]}
+      - {key: node_other_ihc_1, label: "淋巴结其他IHC 1", target_fields: [node_other_ihc_1]}
+      - {key: node_other_ihc_2, label: "淋巴结其他IHC 2", target_fields: [node_other_ihc_2]}
+      - {key: node_molecular_subtype, label: "淋巴结分子分型", target_fields: [node_molecular_subtype]}
+      - {key: metastasis_biopsy_performed, label: "是否行转移灶穿刺", target_fields: [metastasis_biopsy_performed]}
+      - {key: metastasis_pathology_type, label: "转移灶病理类型", target_fields: [metastasis_pathology_type]}
+      - {key: metastasis_pathology_grade, label: "转移灶病理分级", target_fields: [metastasis_pathology_grade]}
+      - {key: metastasis_er, label: "转移灶ER", target_fields: [metastasis_er]}
+      - {key: metastasis_er_detail, label: "转移灶ER补充", target_fields: [metastasis_er_detail]}
+      - {key: metastasis_pr, label: "转移灶PR", target_fields: [metastasis_pr]}
+      - {key: metastasis_pr_detail, label: "转移灶PR补充", target_fields: [metastasis_pr_detail]}
+      - {key: metastasis_her2, label: "转移灶HER2", target_fields: [metastasis_her2]}
+      - {key: metastasis_ki67, label: "转移灶Ki-67", target_fields: [metastasis_ki67]}
+      - {key: metastasis_ki67_detail, label: "转移灶Ki-67补充", target_fields: [metastasis_ki67_detail]}
+      - {key: metastasis_other_ihc, label: "转移灶其他IHC", target_fields: [metastasis_other_ihc]}
+      - {key: metastasis_molecular_subtype, label: "转移灶分子分型", target_fields: [metastasis_molecular_subtype]}
+      - {key: fish_result, label: "FISH结果", target_fields: [fish_result]}
   SURGICAL_PATHOLOGY:
     label: 术后病理
     regions:
-      - {key: specimen_and_date, label: 标本部位与报告日期, metadata_fields: [specimen_site, report_date]}
-      - {key: postop_tumor_pathology, label: 术后肿块类型、分级与大小, target_fields: [postop_tumor_pathology_type, postop_tumor_pathology_grade], metadata_fields: [postop_tumor_size_mm, multifocality, skin_invasion, chest_wall_invasion, surgical_margin]}
-      - {key: postop_tumor_ihc, label: 术后肿块ER/PR/HER2/Ki-67及其他IHC, target_fields: [postop_tumor_er, postop_tumor_er_detail, postop_tumor_pr, postop_tumor_pr_detail, postop_tumor_her2, postop_tumor_ki67, postop_tumor_ki67_detail, postop_tumor_other_ihc, postop_tumor_molecular_subtype]}
-      - {key: postop_nodes, label: 术后淋巴结数量与转移情况, target_fields: [postop_node_metastasis], metadata_fields: [nodes_positive, nodes_examined, nodal_basin, largest_nodal_metastasis_mm, extranodal_extension]}
-      - {key: postop_node_ihc, label: 术后淋巴结ER/PR/HER2/Ki-67及其他IHC, target_fields: [postop_node_er, postop_node_er_detail, postop_node_pr, postop_node_pr_detail, postop_node_her2, postop_node_ki67, postop_node_ki67_detail, postop_node_other_ihc, postop_node_molecular_subtype]}
-      - {key: surgical_fish, label: FISH结果, target_fields: [fish_result]}
-      - {key: pathological_stage, label: pTNM/ypTNM及病理分期, target_fields: [pathological_stage]}
-      - {key: neoadj_pathology_response, label: pCR、MP与RCB评估, target_fields: [post_neoadj_pcr, post_neoadj_mp_grade, post_neoadj_rcb_grade]}
-
+      - {key: meta_specimen_site, label: "标本部位", metadata_fields: [specimen_site]}
+      - {key: meta_report_date, label: "报告日期", metadata_fields: [report_date]}
+      - {key: postop_tumor_pathology_type, label: "术后肿块病理类型", target_fields: [postop_tumor_pathology_type]}
+      - {key: postop_tumor_pathology_grade, label: "术后肿块病理分级", target_fields: [postop_tumor_pathology_grade]}
+      - {key: meta_postop_tumor_size_mm, label: "术后肿块大小", metadata_fields: [postop_tumor_size_mm]}
+      - {key: meta_multifocality, label: "多灶性", metadata_fields: [multifocality]}
+      - {key: meta_skin_invasion, label: "皮肤侵犯", metadata_fields: [skin_invasion]}
+      - {key: meta_chest_wall_invasion, label: "胸壁侵犯", metadata_fields: [chest_wall_invasion]}
+      - {key: meta_surgical_margin, label: "切缘", metadata_fields: [surgical_margin]}
+      - {key: postop_tumor_er, label: "术后肿块ER", target_fields: [postop_tumor_er]}
+      - {key: postop_tumor_er_detail, label: "术后肿块ER补充", target_fields: [postop_tumor_er_detail]}
+      - {key: postop_tumor_pr, label: "术后肿块PR", target_fields: [postop_tumor_pr]}
+      - {key: postop_tumor_pr_detail, label: "术后肿块PR补充", target_fields: [postop_tumor_pr_detail]}
+      - {key: postop_tumor_her2, label: "术后肿块HER2", target_fields: [postop_tumor_her2]}
+      - {key: postop_tumor_ki67, label: "术后肿块Ki-67", target_fields: [postop_tumor_ki67]}
+      - {key: postop_tumor_ki67_detail, label: "术后肿块Ki-67补充", target_fields: [postop_tumor_ki67_detail]}
+      - {key: postop_tumor_other_ihc, label: "术后肿块其他IHC", target_fields: [postop_tumor_other_ihc]}
+      - {key: postop_tumor_molecular_subtype, label: "术后肿块分子分型", target_fields: [postop_tumor_molecular_subtype]}
+      - {key: postop_node_metastasis, label: "术后淋巴结转移", target_fields: [postop_node_metastasis]}
+      - {key: meta_nodes_positive, label: "阳性淋巴结数", metadata_fields: [nodes_positive]}
+      - {key: meta_nodes_examined, label: "检查淋巴结数", metadata_fields: [nodes_examined]}
+      - {key: meta_nodal_basin, label: "淋巴结区域", metadata_fields: [nodal_basin]}
+      - {key: meta_largest_nodal_metastasis_mm, label: "最大淋巴结转移灶", metadata_fields: [largest_nodal_metastasis_mm]}
+      - {key: meta_extranodal_extension, label: "结外侵犯", metadata_fields: [extranodal_extension]}
+      - {key: postop_node_er, label: "术后淋巴结ER", target_fields: [postop_node_er]}
+      - {key: postop_node_er_detail, label: "术后淋巴结ER补充", target_fields: [postop_node_er_detail]}
+      - {key: postop_node_pr, label: "术后淋巴结PR", target_fields: [postop_node_pr]}
+      - {key: postop_node_pr_detail, label: "术后淋巴结PR补充", target_fields: [postop_node_pr_detail]}
+      - {key: postop_node_her2, label: "术后淋巴结HER2", target_fields: [postop_node_her2]}
+      - {key: postop_node_ki67, label: "术后淋巴结Ki-67", target_fields: [postop_node_ki67]}
+      - {key: postop_node_ki67_detail, label: "术后淋巴结Ki-67补充", target_fields: [postop_node_ki67_detail]}
+      - {key: postop_node_other_ihc, label: "术后淋巴结其他IHC", target_fields: [postop_node_other_ihc]}
+      - {key: postop_node_molecular_subtype, label: "术后淋巴结分子分型", target_fields: [postop_node_molecular_subtype]}
+      - {key: fish_result, label: "FISH结果", target_fields: [fish_result]}
+      - {key: pathological_stage, label: "病理TNM分期", target_fields: [pathological_stage]}
+      - {key: post_neoadj_pcr, label: "pCR评估", target_fields: [post_neoadj_pcr]}
+      - {key: post_neoadj_mp_grade, label: "MP分级", target_fields: [post_neoadj_mp_grade]}
+      - {key: post_neoadj_rcb_grade, label: "RCB分级", target_fields: [post_neoadj_rcb_grade]}
   IHC:
     label: 免疫组化
     regions:
-      - {key: specimen_and_date, label: 标本部位与报告日期, metadata_fields: [specimen_site, report_date]}
-      - {key: ihc_panel, label: ER/PR/HER2/Ki-67面板, target_fields: [primary_er, primary_pr, primary_her2, primary_ki67, node_er, node_pr, node_her2, node_ki67, metastasis_er, metastasis_pr, metastasis_her2, metastasis_ki67, postop_tumor_er, postop_tumor_pr, postop_tumor_her2, postop_tumor_ki67, postop_node_er, postop_node_pr, postop_node_her2, postop_node_ki67]}
-      - {key: other_ihc, label: 其他免疫组化, target_fields: [primary_other_ihc, node_other_ihc_1, node_other_ihc_2, metastasis_other_ihc, postop_tumor_other_ihc, postop_node_other_ihc]}
-      - {key: fish_result, label: FISH结果, target_fields: [fish_result]}
-      - {key: molecular_subtype, label: 分子分型, target_fields: [primary_molecular_subtype, node_molecular_subtype, metastasis_molecular_subtype, postop_tumor_molecular_subtype, postop_node_molecular_subtype]}
-
+      - {key: meta_specimen_site, label: "标本部位", metadata_fields: [specimen_site]}
+      - {key: meta_report_date, label: "报告日期", metadata_fields: [report_date]}
+      - {key: primary_er, label: "原发灶ER", target_fields: [primary_er]}
+      - {key: primary_pr, label: "原发灶PR", target_fields: [primary_pr]}
+      - {key: primary_her2, label: "原发灶HER2", target_fields: [primary_her2]}
+      - {key: primary_ki67, label: "原发灶Ki-67", target_fields: [primary_ki67]}
+      - {key: node_er, label: "淋巴结ER", target_fields: [node_er]}
+      - {key: node_pr, label: "淋巴结PR", target_fields: [node_pr]}
+      - {key: node_her2, label: "淋巴结HER2", target_fields: [node_her2]}
+      - {key: node_ki67, label: "淋巴结Ki-67", target_fields: [node_ki67]}
+      - {key: metastasis_er, label: "转移灶ER", target_fields: [metastasis_er]}
+      - {key: metastasis_pr, label: "转移灶PR", target_fields: [metastasis_pr]}
+      - {key: metastasis_her2, label: "转移灶HER2", target_fields: [metastasis_her2]}
+      - {key: metastasis_ki67, label: "转移灶Ki-67", target_fields: [metastasis_ki67]}
+      - {key: postop_tumor_er, label: "术后肿块ER", target_fields: [postop_tumor_er]}
+      - {key: postop_tumor_pr, label: "术后肿块PR", target_fields: [postop_tumor_pr]}
+      - {key: postop_tumor_her2, label: "术后肿块HER2", target_fields: [postop_tumor_her2]}
+      - {key: postop_tumor_ki67, label: "术后肿块Ki-67", target_fields: [postop_tumor_ki67]}
+      - {key: postop_node_er, label: "术后淋巴结ER", target_fields: [postop_node_er]}
+      - {key: postop_node_pr, label: "术后淋巴结PR", target_fields: [postop_node_pr]}
+      - {key: postop_node_her2, label: "术后淋巴结HER2", target_fields: [postop_node_her2]}
+      - {key: postop_node_ki67, label: "术后淋巴结Ki-67", target_fields: [postop_node_ki67]}
+      - {key: primary_other_ihc, label: "原发灶其他IHC", target_fields: [primary_other_ihc]}
+      - {key: node_other_ihc_1, label: "淋巴结其他IHC 1", target_fields: [node_other_ihc_1]}
+      - {key: node_other_ihc_2, label: "淋巴结其他IHC 2", target_fields: [node_other_ihc_2]}
+      - {key: metastasis_other_ihc, label: "转移灶其他IHC", target_fields: [metastasis_other_ihc]}
+      - {key: postop_tumor_other_ihc, label: "术后肿块其他IHC", target_fields: [postop_tumor_other_ihc]}
+      - {key: postop_node_other_ihc, label: "术后淋巴结其他IHC", target_fields: [postop_node_other_ihc]}
+      - {key: fish_result, label: "FISH结果", target_fields: [fish_result]}
+      - {key: primary_molecular_subtype, label: "原发灶分子分型", target_fields: [primary_molecular_subtype]}
+      - {key: node_molecular_subtype, label: "淋巴结分子分型", target_fields: [node_molecular_subtype]}
+      - {key: metastasis_molecular_subtype, label: "转移灶分子分型", target_fields: [metastasis_molecular_subtype]}
+      - {key: postop_tumor_molecular_subtype, label: "术后肿块分子分型", target_fields: [postop_tumor_molecular_subtype]}
+      - {key: postop_node_molecular_subtype, label: "术后淋巴结分子分型", target_fields: [postop_node_molecular_subtype]}
   TREATMENT:
     label: 治疗记录
     regions:
-      - {key: neoadjuvant_treatment, label: 新辅助方案、周期与日期, target_fields: [neoadjuvant_received, neoadjuvant_regimen, neoadjuvant_cycles]}
-      - {key: radiotherapy, label: 放疗, target_fields: [postoperative_radiotherapy]}
-      - {key: chemotherapy, label: 术后化疗方案与周期, target_fields: [postoperative_chemotherapy, postoperative_chemotherapy_regimen, postoperative_chemotherapy_cycles]}
-      - {key: endocrine_therapy, label: 内分泌治疗方案, target_fields: [postoperative_endocrine, postoperative_endocrine_regimen]}
-      - {key: targeted_therapy, label: 靶向治疗方案与周期, target_fields: [postoperative_targeted, postoperative_targeted_regimen, postoperative_targeted_cycles]}
-      - {key: immunotherapy, label: 免疫治疗方案与周期, target_fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]}
-      - {key: palliative_treatment, label: 姑息全身治疗方案, target_fields: [palliative_systemic_treatment, palliative_systemic_regimen]}
-      - {key: recurrence_metastasis, label: 复发、转移及事件日期, target_fields: [recurrence, recurrence_detail, followup_metastasis, followup_metastasis_detail]}
-      - {key: second_primary, label: 第二原发癌、日期及病理, target_fields: [second_primary_cancer, second_primary_cancer_detail, second_primary_pathology]}
-      - {key: followup_and_death, label: 末次就诊、死亡状态与日期, target_fields: [last_visit_date, death, death_date]}
-
+      - {key: neoadjuvant_received, label: "是否接受新辅助治疗", target_fields: [neoadjuvant_received]}
+      - {key: neoadjuvant_regimen, label: "新辅助方案", target_fields: [neoadjuvant_regimen]}
+      - {key: neoadjuvant_cycles, label: "新辅助周期", target_fields: [neoadjuvant_cycles]}
+      - {key: postoperative_radiotherapy, label: "术后是否放疗", target_fields: [postoperative_radiotherapy]}
+      - {key: postoperative_chemotherapy, label: "术后是否化疗", target_fields: [postoperative_chemotherapy]}
+      - {key: postoperative_chemotherapy_regimen, label: "术后化疗方案", target_fields: [postoperative_chemotherapy_regimen]}
+      - {key: postoperative_chemotherapy_cycles, label: "术后化疗周期", target_fields: [postoperative_chemotherapy_cycles]}
+      - {key: postoperative_endocrine, label: "术后是否内分泌治疗", target_fields: [postoperative_endocrine]}
+      - {key: postoperative_endocrine_regimen, label: "术后内分泌方案", target_fields: [postoperative_endocrine_regimen]}
+      - {key: postoperative_targeted, label: "术后是否靶向治疗", target_fields: [postoperative_targeted]}
+      - {key: postoperative_targeted_regimen, label: "术后靶向方案", target_fields: [postoperative_targeted_regimen]}
+      - {key: postoperative_targeted_cycles, label: "术后靶向周期", target_fields: [postoperative_targeted_cycles]}
+      - {key: postoperative_immunotherapy, label: "术后是否免疫治疗", target_fields: [postoperative_immunotherapy]}
+      - {key: postoperative_immunotherapy_regimen, label: "术后免疫治疗方案", target_fields: [postoperative_immunotherapy_regimen]}
+      - {key: postoperative_immunotherapy_cycles, label: "术后免疫治疗周期", target_fields: [postoperative_immunotherapy_cycles]}
+      - {key: palliative_systemic_treatment, label: "是否姑息全身治疗", target_fields: [palliative_systemic_treatment]}
+      - {key: palliative_systemic_regimen, label: "姑息全身治疗方案", target_fields: [palliative_systemic_regimen]}
+      - {key: recurrence, label: "是否复发", target_fields: [recurrence]}
+      - {key: recurrence_detail, label: "复发详情", target_fields: [recurrence_detail]}
+      - {key: followup_metastasis, label: "随访是否转移", target_fields: [followup_metastasis]}
+      - {key: followup_metastasis_detail, label: "随访转移详情", target_fields: [followup_metastasis_detail]}
+      - {key: second_primary_cancer, label: "是否第二原发癌", target_fields: [second_primary_cancer]}
+      - {key: second_primary_cancer_detail, label: "第二原发癌详情", target_fields: [second_primary_cancer_detail]}
+      - {key: second_primary_pathology, label: "第二原发癌病理", target_fields: [second_primary_pathology]}
+      - {key: last_visit_date, label: "末次就诊时间", target_fields: [last_visit_date]}
+      - {key: death, label: "是否死亡", target_fields: [death]}
+      - {key: death_date, label: "死亡日期", target_fields: [death_date]}
   OTHER:
     label: 其他
     regions:
-      - {key: other_information, label: 其他收集信息, target_fields: [other_collected_information]}
+      - {key: other_collected_information, label: "其他收集信息", target_fields: [other_collected_information]}
