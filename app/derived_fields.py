@@ -19,11 +19,14 @@ MEASUREMENT_SOURCE_FIELDS = (
     "post_neoadj_mri_size_mm",
 )
 
+DERIVED_FIELD_NAMES = tuple(
+    [item for values in TNM_SOURCE_FIELDS.values() for item in values]
+    + [f"{source}_dim{index}_mm" for source in MEASUREMENT_SOURCE_FIELDS for index in (1, 2, 3)]
+)
+
 
 def is_derived_field(field_name: str) -> bool:
-    if field_name in {item for values in TNM_SOURCE_FIELDS.values() for item in values}:
-        return True
-    return bool(re.search(r"_dim[123]_mm$", field_name))
+    return field_name in DERIVED_FIELD_NAMES
 
 
 def _tnm_field_definitions(source: dict[str, Any]) -> list[dict[str, Any]]:
@@ -109,21 +112,23 @@ def parse_measurement_components_mm(value: object) -> tuple[str | None, str | No
     """Parse 1-3 source-order dimensions and normalize cm to mm.
 
     The editable master value is never rewritten. These values are only a
-    read-only projection after human verification.
+    read-only projection after human verification. Missing positions remain
+    missing instead of shifting later values to the left.
     """
     if value is None:
         return None
     if isinstance(value, (list, tuple)):
-        raw_values = list(value)[:3]
-        numbers = [float(item) for item in raw_values if item not in (None, "")]
-        if not numbers:
+        raw_values = (list(value)[:3] + [None, None, None])[:3]
+        if not any(item not in (None, "") for item in raw_values):
             return None
-        formatted = [_format_number(number) for number in numbers]
-        return tuple((formatted + [None, None, None])[:3])  # type: ignore[return-value]
+        formatted = [
+            _format_number(float(item)) if item not in (None, "") else None
+            for item in raw_values
+        ]
+        return tuple(formatted)  # type: ignore[return-value]
     if isinstance(value, dict):
         raw_values = [value.get("length"), value.get("width"), value.get("height")]
-        present = [item for item in raw_values if item not in (None, "")]
-        if not present:
+        if not any(item not in (None, "") for item in raw_values):
             return None
         formatted = [_format_number(float(item)) if item not in (None, "") else None for item in raw_values]
         return tuple(formatted)  # type: ignore[return-value]
@@ -219,11 +224,21 @@ def refresh_derived_observations(connection: sqlite3.Connection) -> int:
                 "source_field": source_field,
             }
 
-    target_fields = tuple(
-        [item for values in TNM_SOURCE_FIELDS.values() for item in values]
-        + [f"{source}_dim{index}_mm" for source in MEASUREMENT_SOURCE_FIELDS for index in (1, 2, 3)]
-    )
+    target_fields = DERIVED_FIELD_NAMES
     target_placeholders = ",".join("?" for _ in target_fields)
+
+    # Synthetic fields are system-owned. Remove any manually/AI-created row
+    # using these names so only DERIVED projections can exist.
+    unauthorized = connection.execute(
+        f"""SELECT id FROM observations
+            WHERE field_name IN ({target_placeholders}) AND source_mode!='DERIVED'""",
+        target_fields,
+    ).fetchall()
+    changed = 0
+    for row in unauthorized:
+        connection.execute("DELETE FROM observations WHERE id=?", (row["id"],))
+        changed += 1
+
     existing_rows = connection.execute(
         f"""SELECT * FROM observations
             WHERE field_name IN ({target_placeholders}) AND source_mode='DERIVED'""",
@@ -233,7 +248,6 @@ def refresh_derived_observations(connection: sqlite3.Connection) -> int:
     for row in existing_rows:
         existing.setdefault((int(row["patient_id"]), str(row["field_name"])), []).append(row)
 
-    changed = 0
     for key, rows_for_field in existing.items():
         if key in desired:
             continue
