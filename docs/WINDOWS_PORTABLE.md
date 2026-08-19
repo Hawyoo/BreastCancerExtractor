@@ -1,30 +1,72 @@
 # BreastCancerExtractor Windows Portable
 
-## 使用
+## 默认使用：只需要 OCR
 
 1. 解压整个 `BreastCancerExtractor` 文件夹，不要只复制 exe。
 2. 双击 `BreastCancerExtractor.exe`。
-3. 程序会检测本机 `127.0.0.1:11434` 上的 Ollama；没有服务时会尝试启动 `runtime/ollama/ollama.exe`。
-4. OCR 由 Portable 内携带的本地 PaddleOCR 服务自动启动。
-5. 浏览器会打开 `http://127.0.0.1:8765`。
+3. PaddleOCR 会由 Portable 自动启动。
+4. 浏览器会打开 `http://127.0.0.1:8765`。
+
+**Ollama 不是 Windows 版必需组件。** 没有安装 Ollama 时，图片导入、脱敏、ROI、OCR、人工录入和审核均可正常使用，只是不运行本地 AI 抽取。
 
 关闭启动窗口或按 `Ctrl+C` 会停止本次 Portable 主程序及由它启动的辅助服务。
+
+## 需要本地 AI 时
+
+任选一种方式即可：
+
+### 方式 A：单独安装系统 Ollama（推荐）
+
+安装 Ollama 后启动它，BreastCancerExtractor 会自动连接本机 `127.0.0.1:11434`。
+
+例如：
+
+```powershell
+ollama pull qwen3:8b
+```
+
+已经由用户自己启动的系统 Ollama 不会在 BreastCancerExtractor 退出时被关闭。
+
+### 方式 B：构建自带 Ollama 的 Portable
+
+默认：
+
+```text
+build-portable.bat
+```
+
+生成精简版，不携带 Ollama。
+
+如果明确需要离线自带 Ollama，并且构建电脑已安装 Ollama：
+
+```text
+build-portable-with-ollama.bat
+```
+
+此时才会把 Ollama runtime 复制到：
+
+```text
+runtime/ollama/
+```
 
 ## 数据目录
 
 所有可写数据均保存在 exe 同级目录：
 
 ```text
-database/       可重建目录库及每名患者的完整可移动目录
-models/llm/     用户放入的 GGUF 文件
-models/ollama/  Portable Ollama 注册后的模型
-local_knowledge/本地知识库扩展
-logs/           本地运行日志
-runtime/ollama/ Ollama standalone runtime
+database/        患者数据库和脱敏图片
+models/llm/      用户自行放入的 GGUF
+local_knowledge/ 本地知识库扩展
+logs/            本地日志
+runtime/         OCR 缓存；带 Ollama 构建时还包含 runtime/ollama/
 ```
 
-每名患者位于 `database/patients/<7位病案号>/`，目录内包含 `patient.sqlite`、`manifest.json` 和 `sanitized/`。跨设备复制患者目录后，在首页点击“扫描患者目录”完成登记或冲突处理。如果目标电脑已有同一病案号，先把外来目录改名为 `病案号-来源电脑`，不要覆盖本机目录。
+每名患者位于 `database/patients/<7位病案号>/`。跨设备复制患者目录后，在首页点击“扫描患者目录”完成登记或冲突处理。
 
-复制或升级程序前，请备份 `database/`、`models/` 和 `local_knowledge/`。程序只使用 `database/catalog.sqlite` 与 `database/patients/` 数据结构。
+升级或迁移前建议备份：
 
-推荐模型为 Qwen3 8B，但程序不会把模型名称写死；可在 Web 模型管理中选择或导入其他本地模型。
+```text
+database/
+models/
+local_knowledge/
+```
