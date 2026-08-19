@@ -35,9 +35,9 @@ DOCUMENT_GROUPS = {
         "staging",
     },
     "DISCHARGE": {"diagnosis", "staging", "surgery", "neoadjuvant", "adjuvant_treatment"},
-    "ULTRASOUND": {"pretreatment_imaging", "pretreatment_ultrasound", "post_neoadjuvant_imaging"},
-    "MAMMOGRAPHY": {"pretreatment_imaging", "pretreatment_mammography"},
-    "MRI": {"pretreatment_imaging", "pretreatment_mri", "post_neoadjuvant_imaging"},
+    "ULTRASOUND": {"pretreatment_ultrasound", "post_neoadjuvant_imaging"},
+    "MAMMOGRAPHY": {"pretreatment_mammography"},
+    "MRI": {"pretreatment_mri", "post_neoadjuvant_imaging"},
     "BIOPSY_PATHOLOGY": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "biomarkers", "diagnosis", "staging"},
     "SURGICAL_PATHOLOGY": {"surgical_pathology", "biomarkers", "diagnosis", "staging", "treatment_response"},
     "IHC": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "surgical_pathology", "biomarkers"},
@@ -52,9 +52,14 @@ DOCUMENT_FIELD_EXCLUSIONS = {
 
 # Direct identifiers remain manual_restricted by default. The cohort explicitly
 # requires the contact number to be extracted from the medical-record cover,
-# so this one document-specific exception is intentionally narrow.
+# so this one document-specific exception is intentionally narrow. The imaging
+# multiplicity field is also included narrowly, rather than opening the entire
+# pretreatment_imaging group to every imaging document.
 DOCUMENT_FIELD_INCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"contact"},
+    "ULTRASOUND": {IMAGING_MULTIPLICITY_FIELD},
+    "MAMMOGRAPHY": {IMAGING_MULTIPLICITY_FIELD},
+    "MRI": {IMAGING_MULTIPLICITY_FIELD},
 }
 
 # Human review may always override a yes/no default to UNKNOWN, even where the
