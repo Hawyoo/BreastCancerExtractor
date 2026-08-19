@@ -15,7 +15,7 @@ from pathlib import Path
 
 APP_HOST = "127.0.0.1"
 DEFAULT_APP_PORT = 8765
-OCR_PORT = 8001
+DEFAULT_OCR_PORT = 18765
 OLLAMA_PORT = int(os.getenv("BCE_OLLAMA_PORT", "11434"))
 
 
@@ -122,9 +122,41 @@ def _portable_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _port_bindable(host: str, port: int) -> bool:
+    """Return whether Windows/the OS currently allows binding this TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as stream:
+        try:
+            stream.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _find_free_tcp_port(host: str) -> int:
+    """Ask the OS for an available TCP port when the preferred OCR port is unavailable."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as stream:
+        stream.bind((host, 0))
+        return int(stream.getsockname()[1])
+
+
+def _resolve_ocr_port() -> int:
+    configured = os.getenv("BCE_OCR_PORT")
+    if configured:
+        return int(configured)
+    if _port_bindable(APP_HOST, DEFAULT_OCR_PORT):
+        return DEFAULT_OCR_PORT
+    return _find_free_tcp_port(APP_HOST)
+
+
+def _ocr_port() -> int:
+    return int(os.getenv("BCE_OCR_PORT", str(DEFAULT_OCR_PORT)))
+
+
 def configure_native_environment(root: Path | None = None) -> Path:
     root = (root or _portable_root()).resolve()
+    ocr_port = _resolve_ocr_port()
     os.environ["BCE_PORTABLE_ROOT"] = str(root)
+    os.environ["BCE_OCR_PORT"] = str(ocr_port)
     os.environ["RUNTIME_MODE"] = "windows_native"
     os.environ["DATA_PATH"] = str(root / "database")
     os.environ["CONFIG_PATH"] = str(root / "config")
@@ -132,7 +164,7 @@ def configure_native_environment(root: Path | None = None) -> Path:
     os.environ["DATABASE_PATH"] = str(root / "runtime" / "catalog.sqlite")
     os.environ["MODEL_IMPORT_PATH"] = str(root / "models" / "llm")
     os.environ["OLLAMA_URL"] = f"http://{APP_HOST}:{OLLAMA_PORT}"
-    os.environ["OCR_URL"] = f"http://{APP_HOST}:{OCR_PORT}"
+    os.environ["OCR_URL"] = f"http://{APP_HOST}:{ocr_port}"
     os.environ["PADDLE_PDX_CACHE_HOME"] = str(root / "runtime" / "paddlex-cache")
     os.environ.setdefault("OFFLINE_MODE", "true")
     os.environ.setdefault("PADDLE_PDX_MODEL_SOURCE", "BOS")
@@ -260,13 +292,14 @@ def _wait_for(url: str, timeout: float) -> bool:
 
 
 def ensure_ocr(root: Path, job: _WindowsKillOnCloseJob | None = None) -> subprocess.Popen | None:
-    if _url_available(f"http://{APP_HOST}:{OCR_PORT}/health"):
+    ocr_port = _ocr_port()
+    if _url_available(f"http://{APP_HOST}:{ocr_port}/health"):
         return None
     environment = _configure_paddle_home(root, os.environ.copy())
     process = _spawn(_child_command("ocr"), env=environment, cwd=_child_working_directory(root), job=job)
-    if not _wait_for(f"http://{APP_HOST}:{OCR_PORT}/health", timeout=90):
+    if not _wait_for(f"http://{APP_HOST}:{ocr_port}/health", timeout=90):
         _terminate(process)
-        raise RuntimeError("PaddleOCR 本地服务启动失败")
+        raise RuntimeError(f"PaddleOCR 本地服务启动失败（端口 {ocr_port}）")
     return process
 
 
@@ -311,7 +344,7 @@ def run_ocr_service() -> None:
     _configure_paddle_home(root)
     import uvicorn
 
-    uvicorn.run("ocr.service:app", host=APP_HOST, port=OCR_PORT, log_level="warning")
+    uvicorn.run("ocr.service:app", host=APP_HOST, port=_ocr_port(), log_level="warning")
 
 
 def run_ocr_self_test() -> int:
@@ -348,7 +381,7 @@ def run_launcher(port: int) -> int:
     ollama_process: subprocess.Popen | None = None
     watcher_stop = threading.Event()
     try:
-        print("正在启动本地 OCR…")
+        print(f"正在启动本地 OCR（127.0.0.1:{_ocr_port()}）…")
         ocr_process = ensure_ocr(root, job=job)
         if _ollama_disabled(root):
             print("本地 AI 已断开：仅启动 OCR，不启动 Ollama。")
