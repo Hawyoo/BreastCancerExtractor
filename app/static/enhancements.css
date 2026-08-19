@@ -1,0 +1,13 @@
+.transform-controls{display:inline-flex;gap:6px;align-items:center}
+.patient-review-sidepanel[open]{position:fixed;inset:76px 16px 16px auto;width:min(520px,42vw);max-width:calc(100vw - 32px);height:calc(100vh - 92px);margin:0;padding:0;border:1px solid var(--border,#d9dee7);border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.22);z-index:30;overflow:hidden;background:var(--panel,#fff)}
+.patient-review-sidepanel::backdrop{display:none}
+.patient-review-sidepanel .patient-review-dialog-header{position:sticky;top:0;z-index:2;background:inherit;padding:16px;border-bottom:1px solid var(--border,#d9dee7)}
+.patient-review-sidepanel .patient-review-table-shell{height:calc(100% - 190px);overflow:auto;padding:0 12px 16px}
+.patient-review-sidepanel .patient-review-table{font-size:12px}
+.patient-review-sidepanel .patient-review-table th{min-width:130px}
+.review-row-actions{min-width:122px}.review-row-actions .tool{display:block;width:100%;margin:3px 0;padding:5px 8px;font-size:11px}
+.manual-field-tools{padding:10px 16px;border-bottom:1px solid var(--border,#d9dee7);background:var(--muted-panel,#f7f9fc)}
+.manual-field-tools>strong{display:block;margin-bottom:8px}.manual-field-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(120px,1fr) auto;gap:8px}.manual-field-row select,.manual-field-row input{min-width:0}.manual-field-tools small{display:block;margin-top:6px;opacity:.72}
+html[data-ai-disconnected="true"] #bulk-ai,html[data-ai-disconnected="true"] .run-ai{opacity:.5;cursor:not-allowed}
+#cancel-raw-upload{margin-left:auto}
+@media (max-width:900px){.patient-review-sidepanel[open]{width:calc(100vw - 24px);inset:70px 12px 12px 12px}.manual-field-row{grid-template-columns:1fr}.patient-review-sidepanel .patient-review-table-shell{height:calc(100% - 260px)}}
