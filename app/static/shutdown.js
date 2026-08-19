@@ -25,12 +25,24 @@
     document.body.appendChild(quickImportScript);
   }
 
+  function loadFieldValidation() {
+    if (document.querySelector('script[data-bce-field-validation="1"]')) return;
+    const validationScript = document.createElement("script");
+    validationScript.src = "/field_validation.js";
+    validationScript.async = false;
+    validationScript.dataset.bceFieldValidation = "1";
+    document.body.appendChild(validationScript);
+  }
+
   if (!document.querySelector('script[data-bce-review-inline="1"]')) {
     const reviewScript = document.createElement("script");
     reviewScript.src = "/review_inline.js";
     reviewScript.async = false;
     reviewScript.dataset.bceReviewInline = "1";
+    reviewScript.onload = loadFieldValidation;
     document.body.appendChild(reviewScript);
+  } else {
+    loadFieldValidation();
   }
 
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
