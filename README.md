@@ -6,6 +6,30 @@
 
 ---
 
+# 我到底该双击哪个脚本？
+
+如果你是在 Windows 上下载了项目源码 ZIP，并且只是想**直接运行 Breast Cancer Extractor**：
+
+```text
+start-native.bat
+```
+
+**日常直接运行源码版，就双击 `start-native.bat`。** 第一次运行时它会自动在项目目录内安装 uv、准备 Python 环境和依赖；以后仍然继续双击这个文件即可。
+
+其他脚本只在对应场景使用：
+
+| 目的 | 应该运行 |
+|---|---|
+| Windows 直接运行源码 / Native 版 | **`start-native.bat`** |
+| 制作可复制到其他电脑的 Windows Portable | `build-portable.bat` |
+| 制作自带 Ollama 的 Windows Portable | `build-portable-with-ollama.bat` |
+| Docker 第一次安装 | `install.bat` |
+| Docker 日常启动 | `start.bat` |
+
+> **不要为了日常运行源码版去执行 `build-portable.bat`。** `build-portable.bat` 是“打包程序”，不是普通启动程序。
+
+---
+
 # Windows 极简版
 
 Windows 版默认只需要 **OCR**，**Ollama / 本地 AI 是可选项**。
@@ -21,23 +45,39 @@ Windows 版默认只需要 **OCR**，**Ollama / 本地 AI 是可选项**。
 > 
 > 如果同一份 `dist` 在本地英文路径可以 OCR，但复制到移动硬盘后 OCR 失败，请首先检查**完整路径中是否包含中文或其他非 ASCII 字符**。不要先重装 PaddleOCR，也不要先删除模型。
 
+## 直接运行源码版（推荐用于本机使用）
+
 1. GitHub：`Code → Download ZIP`
-2. 完整解压项目。
+2. 完整解压项目到纯英文路径。
 3. 双击：
+
+```text
+start-native.bat
+```
+
+首次运行如果项目内还没有 uv，脚本会自动把 uv 安装到项目目录 `.uv-local\`，并使用项目根目录的 `uv.toml` 通过 CERNET PyPI 镜像下载 Python 依赖。不会修改用户的全局 PATH，也不会写入用户级 uv 配置。
+
+以后再次运行，仍然只需要双击：
+
+```text
+start-native.bat
+```
+
+## 制作 Windows Portable
+
+只有在你需要**打包一个可复制到其他电脑运行的版本**时，才双击：
 
 ```text
 build-portable.bat
 ```
 
-首次运行如果项目内还没有 uv，脚本会自动把 uv 安装到项目目录 `.uv-local\`，并使用项目根目录的 `uv.toml` 通过 CERNET PyPI 镜像下载 Python 依赖。不会修改用户的全局 PATH，也不会写入用户级 uv 配置。
-
-4. 构建完成后进入：
+构建完成后进入：
 
 ```text
 dist\BreastCancerExtractor\
 ```
 
-5. 双击：
+双击：
 
 ```text
 BreastCancerExtractor.exe
@@ -82,7 +122,23 @@ Windows 版本使用 PyInstaller onedir。目标电脑运行构建后的 Portabl
 > [!CAUTION]
 > **Windows 路径要求：请使用纯英文 / ASCII 路径。** 例如 `F:\BreastCancerExtractor\`。如果将同一 Portable 移动到 `F:\临床数据提取\BreastCancerExtractor\` 等含中文目录的路径后出现 OCR 500、`Cannot open ... inference.json`、模型文件明明存在却无法读取等问题，应先把整个目录移回纯英文路径再重试。
 
+### Windows Native 直接启动
+
+日常运行源码版：
+
+```text
+start-native.bat
+```
+
+它会使用项目内 uv bootstrap：缺少 uv 时自动安装，然后执行 `uv run --group native` 启动程序。
+
 ### 默认精简构建
+
+仅当需要制作 Portable 时运行：
+
+```text
+build-portable.bat
+```
 
 构建电脑需要：
 
@@ -90,25 +146,9 @@ Windows 版本使用 PyInstaller onedir。目标电脑运行构建后的 Portabl
 - 首次构建时可访问网络；
 - 正常的 CPU / GPU 驱动。
 
-运行：
-
-```text
-build-portable.bat
-```
-
 `build-portable.bat` 会自动准备项目自己的 uv。uv 可执行文件、uv 管理的 Python 和缓存均保留在项目目录中，不要求提前安装系统级 uv。
 
 此版本包含主程序和 PaddleOCR，**不包含 Ollama**。
-
-### Windows Native 直接启动
-
-如果不构建 Portable，也可以直接运行：
-
-```text
-start-native.bat
-```
-
-它使用与构建流程相同的项目内 uv bootstrap：缺少 uv 时自动安装，然后执行 `uv run --group native` 启动程序。
 
 ### 可选本地 AI
 
