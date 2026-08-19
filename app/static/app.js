@@ -988,8 +988,9 @@ function renderFieldReview() {
   $("#review-field-key").textContent=`字段名：${observation.field_name}`;
   $("#review-ai-value").value=observation.ai_value??"";
   const basisBox=$("#review-inference-basis"),basis=Array.isArray(observation.inference_basis)?observation.inference_basis:[];
-  basisBox.hidden=!basis.length;
-  basisBox.innerHTML=basis.length?`<strong>TNM评估依据</strong>${basis.map(item=>`<div><b>${escapeHtml(item.component||"证据")}</b><span>${escapeHtml(item.fact||"")}</span><small>${escapeHtml(item.source_text||"")}</small></div>`).join("")}`:"";
+  const showTnmBasis=["clinical_stage","pathological_stage"].includes(observation.field_name)&&basis.length>0;
+  basisBox.hidden=!showTnmBasis;
+  basisBox.innerHTML=showTnmBasis?`<strong>TNM评估依据</strong>${basis.map(item=>`<div><b>${escapeHtml(item.component||"证据")}</b><span>${escapeHtml(item.fact||"")}</span><small>${escapeHtml(item.source_text||"")}</small></div>`).join("")}`:"";
   $("#review-current-value").value=observation.current_value??"";
   renderReviewChoices(observation);
   $("#review-note").value="";

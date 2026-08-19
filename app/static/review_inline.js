@@ -29,7 +29,6 @@
     other: "其他",
   };
   const DIRECT_IDENTIFIER_FIELDS = new Set(["record_number", "contact"]);
-  const TNM_FIELDS = new Set(["clinical_stage", "pathological_stage"]);
   const INTEGER_FIELD_KEYS = new Set(["menarche_age", "menopause_age"]);
   const YES_NO_FIELD_KEYS = new Set([
     "menopausal_status",
@@ -243,8 +242,8 @@
     };
   }
 
-  // Only TNM fields should display the TNM inference-basis box. Menopause and
-  // other inferred fields may carry provenance, but must not show a TNM panel.
+  // Keep local display-label and integer-input enhancements only. TNM basis
+  // visibility is owned by the core renderFieldReview() in app.js.
   const originalRenderFieldReview = typeof renderFieldReview === "function" ? renderFieldReview : null;
   if (originalRenderFieldReview) {
     renderFieldReview = () => {
@@ -254,12 +253,6 @@
 
       const label = document.querySelector("#review-field-name");
       if (label) label.textContent = displayFieldLabel(observation.field_name, observation.field_label || observation.field_name);
-
-      const basisBox = document.querySelector("#review-inference-basis");
-      if (basisBox && !TNM_FIELDS.has(observation.field_name)) {
-        basisBox.hidden = true;
-        basisBox.innerHTML = "";
-      }
 
       const valueField = document.querySelector("#review-current-value");
       const saveButton = document.querySelector("#save-field-edit");
