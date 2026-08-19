@@ -23,20 +23,21 @@ Windows 版默认只需要 **OCR**，**Ollama / 本地 AI 是可选项**。
 
 1. GitHub：`Code → Download ZIP`
 2. 完整解压项目。
-3. 构建电脑安装 `uv`。
-4. 双击：
+3. 双击：
 
 ```text
 build-portable.bat
 ```
 
-5. 构建完成后进入：
+首次运行如果项目内还没有 uv，脚本会自动把 uv 安装到项目目录 `.uv-local\`，并使用项目根目录的 `uv.toml` 通过 CERNET PyPI 镜像下载 Python 依赖。不会修改用户的全局 PATH，也不会写入用户级 uv 配置。
+
+4. 构建完成后进入：
 
 ```text
 dist\BreastCancerExtractor\
 ```
 
-6. 双击：
+5. 双击：
 
 ```text
 BreastCancerExtractor.exe
@@ -86,7 +87,7 @@ Windows 版本使用 PyInstaller onedir。目标电脑运行构建后的 Portabl
 构建电脑需要：
 
 - 64 位 Windows；
-- `uv`；
+- 首次构建时可访问网络；
 - 正常的 CPU / GPU 驱动。
 
 运行：
@@ -95,7 +96,19 @@ Windows 版本使用 PyInstaller onedir。目标电脑运行构建后的 Portabl
 build-portable.bat
 ```
 
+`build-portable.bat` 会自动准备项目自己的 uv。uv 可执行文件、uv 管理的 Python 和缓存均保留在项目目录中，不要求提前安装系统级 uv。
+
 此版本包含主程序和 PaddleOCR，**不包含 Ollama**。
+
+### Windows Native 直接启动
+
+如果不构建 Portable，也可以直接运行：
+
+```text
+start-native.bat
+```
+
+它使用与构建流程相同的项目内 uv bootstrap：缺少 uv 时自动安装，然后执行 `uv run --group native` 启动程序。
 
 ### 可选本地 AI
 
@@ -373,15 +386,19 @@ local_knowledge\
 
 # 本地开发
 
-```powershell
-uv sync
-uv run uvicorn app.main:app --reload
-```
-
-Windows Native：
+Windows Native 推荐直接双击：
 
 ```text
 start-native.bat
+```
+
+该入口不要求系统提前安装 uv。
+
+如果开发者已经自行安装了全局 uv，也可以继续直接运行：
+
+```powershell
+uv sync
+uv run uvicorn app.main:app --reload
 ```
 
 测试：
@@ -407,7 +424,7 @@ build-portable-with-ollama.bat
 
 # Git 安全
 
-`.gitignore` 已排除患者数据、`config/`、`runtime/`、模型、日志、GGUF、离线镜像和本机配置等内容。
+`.gitignore` 已排除患者数据、`config/`、`runtime/`、`.uv-local/`、uv 缓存、模型、日志、GGUF、离线镜像和本机配置等内容。
 
 提交前请确认不存在：
 
