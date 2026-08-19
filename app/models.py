@@ -27,6 +27,9 @@ class SanitizationMetadata(BaseModel):
     client_reencoded: bool
     enhancement_mode: Literal["ORIGINAL", "ENHANCED"] = "ORIGINAL"
     enhancement_version: str | None = None
+    # Optional editor-only geometry metadata. The sanitized bitmap remains the
+    # authoritative privacy artifact; this merely restores rotated ROI handles.
+    transforms: dict[str, object] | None = None
 
     @field_validator("client_reencoded")
     @classmethod
@@ -83,7 +86,7 @@ class ModelImportRequest(BaseModel):
 
 
 class OllamaProviderUpdate(BaseModel):
-    provider: Literal["DOCKER", "WINDOWS_HOST"]
+    provider: Literal["DISABLED", "DOCKER", "WINDOWS_HOST"]
 
 
 class OllamaModelUpdate(BaseModel):
