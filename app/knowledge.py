@@ -1,4 +1,5 @@
 from functools import lru_cache
+from itertools import combinations
 
 import yaml
 
@@ -66,6 +67,31 @@ def questionnaire_option_index() -> dict[str, list[dict[str, str]]]:
     return result
 
 
+def _allowed_values_for_field(field: dict) -> object:
+    """Return validator-friendly values for typed questionnaire fields.
+
+    app.main already rejects values outside ``allowed_values``. Give integer
+    and multiselect fields an explicit validation domain so arbitrary model
+    text such as ``Heat`` cannot be accepted for an age/count field and a
+    multi-choice answer can contain more than one canonical option.
+    """
+    values = field.get("values")
+    field_type = field.get("type", "string")
+    if field_type == "integer" and not values:
+        # Questionnaire integer fields are non-negative ages/counts/cycles.
+        # A generous bound prevents free-text hallucinations without imposing
+        # a narrow clinical range on manually documented values.
+        return range(0, 10000)
+    if field_type == "multiselect" and values:
+        ordered = [str(value) for value in values]
+        return [
+            ",".join(selection)
+            for size in range(1, len(ordered) + 1)
+            for selection in combinations(ordered, size)
+        ]
+    return values
+
+
 @lru_cache
 def field_catalog() -> list[dict]:
     return [
@@ -83,7 +109,7 @@ def questionnaire_field_index() -> dict[str, dict]:
             "field_label": field["label"],
             "field_group": field.get("group", "other"),
             "field_type": field.get("type", "string"),
-            "allowed_values": field.get("values"),
+            "allowed_values": _allowed_values_for_field(field),
             "field_options": option_index.get(field["key"], []),
             "depends_on": field.get("depends_on"),
             "capture": field.get("capture"),
@@ -173,7 +199,10 @@ def extraction_prompt(
     preferences = data_processing_preferences()
     prompt = (
         f"文档类型：{document_type}\n\n"
-        "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段：\n"
+        "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段。"
+        "integer类型的value只能填写阿拉伯数字整数，不能填写文字；"
+        "multiselect类型如同时命中多个选项，按values定义顺序用英文逗号连接标准值，"
+        "例如HYPERTENSION,DIABETES，不要只保留一个选项：\n"
         f"{yaml.safe_dump(definitions, allow_unicode=True, sort_keys=False)}\n\n"
         "该文档类型的专用抽取规则如下；专用规则优先于通用文字邻近判断：\n"
         f"{yaml.safe_dump(rules, allow_unicode=True, sort_keys=False)}\n\n"
