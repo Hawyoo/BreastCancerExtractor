@@ -66,6 +66,12 @@ HER2_IHC_FIELDS = {
     "primary_her2", "node_her2", "metastasis_her2", "postop_tumor_her2", "postop_node_her2",
 }
 TNM_FIELDS = {"clinical_stage", "pathological_stage"}
+MEASUREMENT_3D_FIELDS = {
+    "pre_us_tumor_size_mm",
+    "pre_mri_tumor_size_mm",
+    "post_neoadj_us_size_mm",
+    "post_neoadj_mri_size_mm",
+}
 IMMUNOTHERAPY_FIELDS = {
     "postoperative_immunotherapy",
     "postoperative_immunotherapy_regimen",
@@ -166,6 +172,14 @@ def normalize_tnm(value: object) -> str:
     return prefix + body
 
 
+def normalize_measurement_3d(value: object) -> str:
+    """Preserve 1-3 recorded dimensions while displaying multi-dimension values with ×."""
+    text = str(value).strip()
+    if not text:
+        return ""
+    return re.sub(r"(?<=\d)\s*[,，xX*＊]\s*(?=\d)", "×", text)
+
+
 def normalize_observation_value(field_name: str, value: object) -> str:
     if field_name in PATHOLOGY_GRADE_FIELDS:
         return normalize_pathology_grade(value)
@@ -177,12 +191,19 @@ def normalize_observation_value(field_name: str, value: object) -> str:
         return normalize_her2_ihc(value)
     if field_name in TNM_FIELDS:
         return normalize_tnm(value)
+    if field_name in MEASUREMENT_3D_FIELDS:
+        return normalize_measurement_3d(value)
     return str(value).strip()
 
 
 def observation_value_is_valid(field_name: str, value: object) -> bool:
     text = normalize_observation_value(field_name, value)
-    if not text or text.upper() in RESERVED_METADATA_VALUES:
+    # Empty is a valid explicit human choice. AI extraction never inserts empty
+    # observations, so allowing it here prevents a manually verified blank from
+    # being turned back into REVIEW_REQUIRED during patient consolidation.
+    if not text:
+        return True
+    if text.upper() in RESERVED_METADATA_VALUES:
         return False
     if field_name in TNM_FIELDS:
         prefix_pattern = r"^(?:c|yc)T" if field_name == "clinical_stage" else r"^(?:p|yp)T"
@@ -1103,11 +1124,13 @@ def create_observation(patient_id: int, payload: ObservationCreate) -> dict[str,
     observation_id = uuid.uuid4().hex
     now = utc_now()
     normalized_value = normalize_observation_value(payload.field_name, payload.value)
+    manual = payload.operator != "AI"
     status = (
-        "REVIEW_REQUIRED"
-        if payload.source_mode == "INFERRED" or payload.confidence in {"LOW", "MEDIUM"}
+        "VERIFIED" if manual else
+        "REVIEW_REQUIRED" if payload.source_mode == "INFERRED" or payload.confidence in {"LOW", "MEDIUM"}
         else "AI_PROCESSED"
     )
+    stored_confidence = "VERIFIED" if manual else payload.confidence
     with connect() as db:
         db.execute(
             """INSERT INTO observations
@@ -1116,21 +1139,30 @@ def create_observation(patient_id: int, payload: ObservationCreate) -> dict[str,
                 prompt_version,ocr_version,created_at,updated_at)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (observation_id, patient_id, payload.document_id, payload.region_id, payload.field_name,
-             normalized_value, normalized_value, payload.raw_text, payload.confidence, status, payload.source_mode,
-             json.dumps(payload.inference_basis, ensure_ascii=False), payload.ruleset_version,
+             None if manual else normalized_value, normalized_value, payload.raw_text, stored_confidence, status,
+             payload.source_mode, json.dumps(payload.inference_basis, ensure_ascii=False), payload.ruleset_version,
              payload.model_name, payload.model_digest, payload.prompt_version, payload.ocr_version,
              now, now),
         )
-        db.execute(
-            """INSERT INTO audit_log
-               (patient_id,document_id,field_name,operation,new_value,operator,model_name,model_digest,timestamp)
-               VALUES(?,?,?,?,?,?,?,?,?)""",
-            (patient_id, payload.document_id, payload.field_name,
-             "AI_INFER" if payload.source_mode == "INFERRED" else "AI_EXTRACT", normalized_value, "AI",
-             payload.model_name, payload.model_digest, now),
-        )
+        if manual:
+            db.execute(
+                """INSERT INTO audit_log
+                   (patient_id,document_id,field_name,operation,new_value,operator,reason,timestamp)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (patient_id, payload.document_id, payload.field_name, "USER_CREATE", normalized_value,
+                 payload.operator, payload.reason, now),
+            )
+        else:
+            db.execute(
+                """INSERT INTO audit_log
+                   (patient_id,document_id,field_name,operation,new_value,operator,model_name,model_digest,timestamp)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (patient_id, payload.document_id, payload.field_name,
+                 "AI_INFER" if payload.source_mode == "INFERRED" else "AI_EXTRACT", normalized_value, "AI",
+                 payload.model_name, payload.model_digest, now),
+            )
         db.execute("UPDATE patients SET status=?,updated_at=? WHERE id=?", (status, now, patient_id))
-    return {"id": observation_id, "status": status, "confidence": payload.confidence}
+    return {"id": observation_id, "status": status, "confidence": stored_confidence}
 
 
 def get_observation(observation_id: str) -> dict[str, object]:
@@ -1262,7 +1294,7 @@ async def update_ollama_provider_setting(payload: OllamaProviderUpdate) -> dict[
 
 
 @app.get("/api/models/installed")
-async def installed_models() -> list[dict[str, object]]:
+async def local_models() -> list[dict[str, object]]:
     selected = get_selected_ollama_model()
     models = await list_model_groups()
     selectable_names = {alias for model in models for alias in model.get("aliases", [])}
