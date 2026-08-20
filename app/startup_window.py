@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import queue
 import threading
+import traceback
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ class PortableStartupWindow:
     """Small Windows-only startup window for the frozen Portable executable.
 
     The UI runs on its own Tk message-loop thread so OCR / Ollama / Uvicorn
-    startup can remain synchronous in the launcher thread.  Source-mode and
+    startup can remain synchronous in the launcher thread. Source-mode and
     non-Windows runs can simply skip creating this window.
     """
 
@@ -63,23 +64,25 @@ class PortableStartupWindow:
             self._running = True
             root.title("Breast Cancer Extractor")
             root.resizable(False, False)
-            root.configure(padx=26, pady=22)
 
-            title = tk.Label(root, text="Breast Cancer Extractor", font=("Segoe UI", 16, "bold"), anchor="w")
+            container = ttk.Frame(root, padding=(26, 22))
+            container.pack(fill="both", expand=True)
+
+            title = tk.Label(container, text="Breast Cancer Extractor", font=("Segoe UI", 16, "bold"), anchor="w")
             title.pack(fill="x")
-            subtitle = tk.Label(root, text="正在启动，请稍候…", font=("Segoe UI", 10), anchor="w")
+            subtitle = tk.Label(container, text="正在启动，请稍候…", font=("Segoe UI", 10), anchor="w")
             subtitle.pack(fill="x", pady=(4, 14))
 
             status_var = tk.StringVar(value="正在准备运行环境…")
-            status = tk.Label(root, textvariable=status_var, font=("Segoe UI", 10), anchor="w")
+            status = tk.Label(container, textvariable=status_var, font=("Segoe UI", 10), anchor="w")
             status.pack(fill="x")
 
-            progress = ttk.Progressbar(root, mode="indeterminate", length=390)
+            progress = ttk.Progressbar(container, mode="indeterminate", length=390)
             progress.pack(fill="x", pady=(10, 12))
             progress.start(12)
 
             note_var = tk.StringVar(value="首次启动或首次加载 OCR 时可能需要更长时间")
-            note = tk.Label(root, textvariable=note_var, font=("Segoe UI", 9), anchor="w", justify="left", wraplength=390)
+            note = tk.Label(container, textvariable=note_var, font=("Segoe UI", 9), anchor="w", justify="left", wraplength=390)
             note.pack(fill="x")
 
             root.update_idletasks()
@@ -129,8 +132,15 @@ class PortableStartupWindow:
             root.mainloop()
         except Exception:
             # Startup UI is a usability layer, never a reason to prevent the
-            # actual local application from launching. Detailed startup output
-            # is still written to logs by native_entry.
+            # actual local application from launching. Persist the UI failure
+            # so a windowed build still has a diagnosable startup record.
+            try:
+                self.log_path.parent.mkdir(parents=True, exist_ok=True)
+                with self.log_path.open("a", encoding="utf-8") as stream:
+                    stream.write("\nStartup window failed:\n")
+                    traceback.print_exc(file=stream)
+            except OSError:
+                pass
             self._started.set()
         finally:
             self._running = False
