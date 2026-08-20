@@ -55,13 +55,15 @@ def test_refresh_button_uses_sorted_patient_loader():
     assert "refresh.onclick = loadPatients" in script
 
 
-def test_patient_sort_loads_before_quick_import_and_before_shutdown_early_return():
+def test_patient_sort_gates_quick_import_and_loads_before_shutdown_early_return():
     shutdown = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
     patient_sort = shutdown.index('patientSortScript.src = "/patient_sort.js"')
-    quick_import = shutdown.index('quickImportScript.src = "/quick_import.js"')
     params = shutdown.index("const params = new URLSearchParams")
     early_return = shutdown.index("if (!port || !token) return")
-    assert patient_sort < quick_import < params < early_return
+    assert patient_sort < params < early_return
+    assert "patientSortScript.onload = loadQuickImport" in shutdown
+    assert "patientSortScript.onerror = loadQuickImport" in shutdown
+    assert 'quickImportScript.src = "/quick_import.js"' in shutdown
     assert 'data-bce-patient-sort="1"' in shutdown
 
 
