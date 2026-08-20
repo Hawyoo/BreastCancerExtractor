@@ -4,6 +4,10 @@
 
 > 用于科研数据抽取，不用于临床诊断或治疗决策。
 
+<p align="center">
+  <img src="docs/images/icon-concept-original.png" alt="Breast Cancer Extractor icon concept" width="160">
+</p>
+
 ---
 
 # 我到底该双击哪个脚本？
