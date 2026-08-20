@@ -21,9 +21,9 @@ def test_blank_value_is_explicitly_allowed_for_strict_fields():
     script = _script()
     assert 'if (!text) return "";' in script
     assert "也可留空保存" in script
-    assert 'body: JSON.stringify({value: "", operator: "local-user", reason: "人工明确留空"})' in script
-    assert 'value: "",' in script
-    assert 'raw_text: "人工明确留空"' in script
+    assert 'value ? "人工手动补充" : "人工明确留空"' in script
+    assert 'reason = String(reasonInput?.value ?? "").trim()' in script
+    assert 'operator: "local-user"' in script
 
 
 def test_choice_fields_offer_a_clear_to_blank_action():
@@ -45,6 +45,15 @@ def test_common_strict_formats_have_visible_guidance():
     assert "允许值：" in script
 
 
+def test_measurements_show_one_to_three_dimensions_with_multiplication_sign():
+    script = _script()
+    assert "尺寸可记录 1–3 个径线" in script
+    assert "25、25×18、25×18×15" in script
+    assert "多个径线统一用乘号 × 连接" in script
+    assert "不要用逗号" in script
+    assert "normalizeMeasurementValue" in script
+
+
 def test_sequential_review_no_longer_disables_blank_integer_values():
     script = _script()
     assert "saveButton.disabled = Boolean(error)" in script
@@ -53,14 +62,22 @@ def test_sequential_review_no_longer_disables_blank_integer_values():
     assert "const error = validationMessage(observation, valueField.value)" in script
 
 
-def test_patient_review_blank_save_reuses_existing_observation_or_creates_one():
+def test_patient_review_save_reuses_existing_observation_or_creates_one():
     script = _script()
-    assert "async function saveBlankInline" in script
+    assert "async function saveInlineValue" in script
     assert "if (observation)" in script
     assert 'method: "PATCH"' in script
     assert 'method: "POST"' in script
     assert "field_name: key" in script
     assert "await refreshCurrentPatient(state.patient.id)" in script
+
+
+def test_patient_review_can_record_a_custom_edit_reason():
+    script = _script()
+    assert "patient-review-reason" in script
+    assert 'input.placeholder = "修改原因（可选）"' in script
+    assert "该内容会写入审计记录的修改原因" in script
+    assert 'body: JSON.stringify({value, operator: "local-user", reason})' in script
 
 
 def test_validation_module_loads_after_review_inline_on_all_runtimes():
