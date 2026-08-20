@@ -11,6 +11,7 @@
       .field-validation-message[hidden],.field-format-hint[hidden]{display:none}
       .field-clear-choice{margin-left:4px;border-style:dashed!important}
       .patient-review-inline-input.field-invalid,#review-current-value.field-invalid{border-color:#b42318!important;outline-color:#b42318!important}
+      .patient-review-reason{display:block;width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--line,#dedbd2);border-radius:7px;background:var(--control,#fff);color:var(--ink,#17251f);font:inherit;font-size:11px}
     `;
     document.head.appendChild(style);
   }
@@ -39,12 +40,19 @@
     return String(observation.field_type || "").toLowerCase();
   }
 
+  function normalizeMeasurementValue(observation, value) {
+    const text = String(value ?? "").trim();
+    if (fieldType(observation) !== "measurement_3d" || !text) return text;
+    return text.replace(/(\d)\s*[,，xX*＊]\s*(?=\d)/g, "$1×");
+  }
+
   function formatHint(observation) {
     if (!observation) return "允许留空保存。";
     const key = observation.field_name;
     const type = fieldType(observation);
     if (key === "clinical_stage") return "格式：cT…N…M…，例如 cT2N1M0；也可留空保存。";
     if (key === "pathological_stage") return "格式：pT…N…M… 或 ypT…N…M…，例如 ypT1N0M0；也可留空保存。";
+    if (type === "measurement_3d") return "格式：各径线用乘号 × 连接，例如 25×18×15；不要用逗号。也可留空保存。";
     if (type === "integer") return "格式：整数，例如 13；也可留空保存。";
     if (type === "number") return "格式：数字，例如 12 或 12.5；也可留空保存。";
     if (type === "date") return "格式：YYYY-MM-DD，例如 2026-08-20；也可留空保存。";
@@ -143,6 +151,13 @@
     return !error;
   }
 
+  function normalizeSequentialMeasurement() {
+    const observation = typeof selectedObservation === "function" ? selectedObservation() : null;
+    const valueField = document.querySelector("#review-current-value");
+    if (!observation || !valueField) return;
+    valueField.value = normalizeMeasurementValue(observation, valueField.value);
+  }
+
   function addSequentialClearChoice() {
     const container = document.querySelector("#review-choice-options");
     const valueField = document.querySelector("#review-current-value");
@@ -184,6 +199,7 @@
 
   ["save-field-edit", "verify-field"].forEach(id => {
     document.querySelector(`#${id}`)?.addEventListener("click", event => {
+      normalizeSequentialMeasurement();
       if (updateSequentialValidation()) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -191,7 +207,7 @@
   });
 
   function inlineInput(row) {
-    return row.querySelector(".inline-choice-editor input[type=hidden], .patient-review-inline-input, textarea:not([readonly]), input:not([readonly]):not([type=hidden])");
+    return row.querySelector(".inline-choice-editor input[type=hidden], .patient-review-inline-input, textarea:not([readonly]), input:not([readonly]):not([type=hidden]):not(.patient-review-reason)");
   }
 
   function ensureInlineMessages(row, observation) {
@@ -212,6 +228,23 @@
       editorCell.appendChild(message);
     }
     return {hint, message};
+  }
+
+  function ensureInlineReason(row) {
+    const editorCell = row.children?.[1];
+    const save = row.querySelector(".patient-review-save");
+    if (!editorCell || !save) return null;
+    let input = row.querySelector(".patient-review-reason");
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "text";
+      input.className = "patient-review-reason";
+      input.maxLength = 500;
+      input.placeholder = "修改原因（可选）";
+      input.title = "该内容会写入审计记录的修改原因";
+      editorCell.appendChild(input);
+    }
+    return input;
   }
 
   function updateInlineValidation(row) {
@@ -256,15 +289,30 @@
       const input = inlineInput(row);
       if (!input) return;
       addInlineClearChoice(row);
+      ensureInlineReason(row);
       input.addEventListener("input", () => updateInlineValidation(row));
       input.addEventListener("change", () => updateInlineValidation(row));
       updateInlineValidation(row);
     });
   }
 
-  async function saveBlankInline(row, button) {
+  async function saveInlineValue(row, button, input) {
     const key = row.dataset.fieldKey;
     const observation = observationForKey(key);
+    const reasonInput = ensureInlineReason(row);
+    const value = normalizeMeasurementValue(observation, input.value);
+    input.value = value;
+    const reason = String(reasonInput?.value ?? "").trim() || (value ? "患者事后回顾手动修改" : "人工明确留空");
+    const oldValue = observation ? String(observation.current_value ?? "").trim() : null;
+    const {message} = ensureInlineMessages(row, observation);
+    if (observation && value === oldValue) {
+      if (message) {
+        message.textContent = "字段值没有变化，无需重复保存。";
+        message.hidden = false;
+      }
+      return;
+    }
+
     button.disabled = true;
     const originalText = button.textContent;
     button.textContent = "保存中…";
@@ -273,7 +321,7 @@
         await api(`/api/observations/${observation.id}`, {
           method: "PATCH",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({value: "", operator: "local-user", reason: "人工明确留空"}),
+          body: JSON.stringify({value, operator: "local-user", reason}),
         });
       } else {
         await api(`/api/patients/${state.patient.id}/observations`, {
@@ -281,17 +329,18 @@
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
             field_name: key,
-            value: "",
-            raw_text: "人工明确留空",
+            value,
+            raw_text: value ? "人工手动补充" : "人工明确留空",
             confidence: "LOW",
             source_mode: "RECORDED",
+            operator: "local-user",
+            reason,
           }),
         });
       }
       await refreshCurrentPatient(state.patient.id);
       if (typeof showPatientReview === "function") await showPatientReview(key, false);
     } catch (error) {
-      const {message} = ensureInlineMessages(row, observation);
       if (message) {
         message.textContent = `保存失败：${error.message}`;
         message.hidden = false;
@@ -311,15 +360,12 @@
       if (!row) return;
       const input = inlineInput(row);
       if (!input) return;
-      if (!updateInlineValidation(row)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
-      }
-      if (String(input.value ?? "").trim() !== "") return;
+      const observation = observationForKey(row.dataset.fieldKey);
+      input.value = normalizeMeasurementValue(observation, input.value);
       event.preventDefault();
       event.stopImmediatePropagation();
-      saveBlankInline(row, button);
+      if (!updateInlineValidation(row)) return;
+      saveInlineValue(row, button, input);
     }, true);
 
     new MutationObserver(() => queueMicrotask(decorateInlineRows))
