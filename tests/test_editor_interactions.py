@@ -47,3 +47,11 @@ def test_final_sanitized_mask_renderer_is_not_reimplemented_here():
     script = _script()
     assert "buildSanitizedBlob" not in script
     assert "out.fillRect" not in script
+
+
+def test_unified_editor_layer_is_loaded_after_existing_editor_modules():
+    shutdown = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
+    assert 'editorScript.src = "/editor_interactions.js"' in shutdown
+    assert 'data-bce-editor-interactions="1"' in shutdown
+    assert "if (!port || !token) return" in shutdown
+    assert shutdown.index('editorScript.src = "/editor_interactions.js"') < shutdown.index("if (!port || !token) return")
