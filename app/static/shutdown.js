@@ -2,12 +2,27 @@
   // This module is loaded after enhancements.js/derived_fields.js. Keep the
   // ROI, patient-browser, quick-import and post-review UI follow-ups independent
   // of whether Windows shutdown control is available (e.g. Docker gets the same behavior).
-  if (!document.querySelector('script[data-bce-editor-interactions="1"]')) {
+  function loadRoiGreen() {
+    if (document.querySelector('script[data-bce-roi-green="1"]')) return;
+    const greenScript = document.createElement("script");
+    greenScript.src = "/roi_green.js";
+    greenScript.async = false;
+    greenScript.dataset.bceRoiGreen = "1";
+    document.body.appendChild(greenScript);
+  }
+
+  const existingEditorScript = document.querySelector('script[data-bce-editor-interactions="1"]');
+  if (!existingEditorScript) {
     const editorScript = document.createElement("script");
     editorScript.src = "/editor_interactions.js";
     editorScript.async = false;
     editorScript.dataset.bceEditorInteractions = "1";
+    editorScript.onload = loadRoiGreen;
     document.body.appendChild(editorScript);
+  } else if (typeof state !== "undefined" && "unifiedTransformGesture" in state) {
+    loadRoiGreen();
+  } else {
+    existingEditorScript.addEventListener("load", loadRoiGreen, {once: true});
   }
 
   if (!document.querySelector('script[data-bce-atomic-roi="1"]')) {
@@ -81,6 +96,32 @@
       </main>`;
   }
 
+  function submitShutdownRequest() {
+    const targetName = `bce-shutdown-${Date.now()}`;
+    const popup = window.open("about:blank", targetName, "popup,width=260,height=140");
+    if (!popup) throw new Error("浏览器阻止了本地关闭请求窗口");
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `http://127.0.0.1:${encodeURIComponent(port)}/shutdown?token=${encodeURIComponent(token)}`;
+    form.target = targetName;
+    form.style.display = "none";
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+
+    showClosedPage();
+    setTimeout(() => {
+      try { popup.close(); } catch (_) {}
+    }, 700);
+    setTimeout(() => {
+      try {
+        window.open("", "_self");
+        window.close();
+      } catch (_) {}
+    }, 900);
+  }
+
   function installShutdownButton() {
     const actions = document.querySelector(".topbar-actions");
     if (!actions || document.querySelector("#shutdown-bce")) return;
@@ -92,22 +133,16 @@
     button.title = "关闭 BCE 及其启动的 OCR / Ollama；不会关闭你原本已启动的系统 Ollama";
     actions.insertBefore(button, document.querySelector("#service-status"));
 
-    button.onclick = async () => {
+    button.onclick = () => {
       button.disabled = true;
       button.textContent = "正在关闭…";
       try {
-        const response = await fetch(
-          `http://127.0.0.1:${encodeURIComponent(port)}/shutdown?token=${encodeURIComponent(token)}`,
-          {method: "POST", cache: "no-store"},
-        );
-        if (!response.ok) throw new Error(`关闭请求失败 (${response.status})`);
-        showClosedPage();
-        setTimeout(() => {
-          try {
-            window.open("", "_self");
-            window.close();
-          } catch (_) {}
-        }, 120);
+        // A normal form POST is intentionally used instead of fetch(). The app
+        // CSP keeps connect-src restricted to 'self', while the shutdown
+        // controller runs on a separate random localhost port. Form navigation
+        // is not governed by connect-src and the control server still validates
+        // both Origin and the per-launch token.
+        submitShutdownRequest();
       } catch (error) {
         button.disabled = false;
         button.textContent = "关闭程序";
