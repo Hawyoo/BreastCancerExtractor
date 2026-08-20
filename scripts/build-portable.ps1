@@ -32,9 +32,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "PaddleOCR inference warm-up failed. If a cached model is incomplete, delete .native-cache\paddlex-cache\official_models and rebuild while online."
 }
 
-Write-Step 3 "Build the PyInstaller onedir distribution"
-& $UvExe run --group native pyinstaller --noconfirm --clean BreastCancerExtractor.spec
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
+Write-Step 3 "Prepare the Windows icon and build the PyInstaller onedir distribution"
+$SourceIcon = Join-Path $ProjectRoot "BreastCancerExtractor.ico"
+$BuildIcon = Join-Path $ProjectRoot ".build-assets\BreastCancerExtractor.ico"
+& $UvExe run --group native python scripts/prepare-windows-icon.py $SourceIcon $BuildIcon
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows executable icon preparation failed. The build requires a valid BreastCancerExtractor.ico source image."
+}
+$env:BCE_BUILD_ICON = $BuildIcon
+try {
+    & $UvExe run --group native pyinstaller --noconfirm --clean BreastCancerExtractor.spec
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
+}
+finally {
+    Remove-Item Env:BCE_BUILD_ICON -ErrorAction SilentlyContinue
+}
 
 $PortableRoot = Join-Path $ProjectRoot "dist\BreastCancerExtractor"
 @("database\patients", "config", "runtime", "models\llm", "local_knowledge", "logs") |
