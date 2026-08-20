@@ -1,9 +1,11 @@
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, copy_metadata, is_module_or_submodule
 
 
 root = Path(SPECPATH)
+icon_path = Path(os.environ.get("BCE_BUILD_ICON", root / "BreastCancerExtractor.ico"))
 datas = [
     (str(root / "app" / "static"), "app/static"),
     (str(root / "knowledge"), "knowledge"),
@@ -65,7 +67,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=str(root / "BreastCancerExtractor.ico"),
+    icon=str(icon_path),
 )
 
 coll = COLLECT(

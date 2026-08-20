@@ -24,6 +24,7 @@ outputs/
 .uv-local/
 .uv-cache/
 .native-cache/
+.build-assets/
 .docker-cli/
 __pycache__/
 *.py[cod]
