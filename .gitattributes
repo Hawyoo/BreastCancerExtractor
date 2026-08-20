@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep image assets binary so Git never applies text normalization to them.
+*.ico binary
+*.png binary
