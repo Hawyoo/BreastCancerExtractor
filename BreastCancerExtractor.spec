@@ -42,7 +42,7 @@ for distribution in (
     datas += copy_metadata(distribution)
 
 a = Analysis(
-    [str(root / "app" / "native_launcher.py")],
+    [str(root / "app" / "native_entry.py")],
     pathex=[str(root)],
     binaries=binaries,
     datas=datas,
