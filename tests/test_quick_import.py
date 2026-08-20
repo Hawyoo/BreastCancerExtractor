@@ -1,5 +1,10 @@
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
+from app.models import PatientCreate
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -7,13 +12,39 @@ def _script() -> str:
     return (ROOT / "app/static/quick_import.js").read_text(encoding="utf-8")
 
 
-def test_quick_import_uses_folder_name_as_existing_seven_digit_patient_id():
+def test_quick_import_uses_direct_parent_folder_name_as_patient_id():
     script = _script()
-    assert "const PATIENT_CODE_PATTERN = /^\\d{7}$/" in script
+    assert "PATIENT_CODE_PATTERN" not in script
     assert "patientCodeFromPath" in script
-    assert "parts.slice(0, -1).reverse().find" in script
+    assert "const folderName = parts[parts.length - 2]" in script
+    assert 'folderName !== "." && folderName !== ".."' in script
+    assert "文件夹名 = 患者ID" in script
+    assert "文件夹名会原样作为患者ID" in script
     assert "patient.patient_code" in script
     assert "new Map(state.patients.map" in script
+
+
+def test_patient_create_accepts_normal_folder_names_as_ids():
+    for patient_id in ("1234567", "A-001", "病例 2026-08", "乳腺癌患者甲"):
+        assert PatientCreate(patient_code=patient_id).patient_code == patient_id
+
+
+@pytest.mark.parametrize(
+    "patient_id",
+    ["", "   ", ".", "..", "a/b", r"a\b", "bad:name", "bad*name", "CON", "LPT1", "tail."],
+)
+def test_patient_create_rejects_unsafe_folder_names(patient_id):
+    with pytest.raises(ValidationError):
+        PatientCreate(patient_code=patient_id)
+
+
+def test_quick_import_relaxes_manual_patient_input_to_same_id_rule():
+    script = _script()
+    assert 'patientInput.placeholder = "患者ID"' in script
+    assert "patientInput.maxLength = 120" in script
+    assert 'patientInput.removeAttribute("pattern")' in script
+    assert 'patientInput.removeAttribute("inputmode")' in script
+    assert 'searchInput.placeholder = "输入患者ID"' in script
 
 
 def test_quick_import_creates_missing_patients_and_reuses_existing_patients():

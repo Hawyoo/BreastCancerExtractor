@@ -1,5 +1,4 @@
 (() => {
-  const PATIENT_CODE_PATTERN = /^\d{7}$/;
   const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|webp|bmp|gif|tiff?)$/i;
   const session = {
     groups: [],
@@ -17,7 +16,9 @@
 
   function patientCodeFromPath(path) {
     const parts = String(path || "").split(/[\\/]+/).filter(Boolean);
-    return parts.slice(0, -1).reverse().find(part => PATIENT_CODE_PATTERN.test(part)) || null;
+    if (parts.length < 2) return null;
+    const folderName = parts[parts.length - 2];
+    return folderName && folderName !== "." && folderName !== ".." ? folderName : null;
   }
 
   function installStyle() {
@@ -67,17 +68,30 @@
     cancelQuickImport();
   }
 
+  function updatePatientIdInputs(form) {
+    const patientInput = form?.querySelector("#patient-code");
+    if (patientInput) {
+      patientInput.placeholder = "患者ID";
+      patientInput.maxLength = 120;
+      patientInput.removeAttribute("pattern");
+      patientInput.removeAttribute("inputmode");
+    }
+    const searchInput = document.querySelector("#data-preview-search");
+    if (searchInput) searchInput.placeholder = "输入患者ID";
+  }
+
   function ensureUi() {
     const browser = document.querySelector("#patient-browser");
     const form = document.querySelector("#patient-form");
     if (!browser || !form || document.querySelector("#quick-import-panel")) return;
     installStyle();
+    updatePatientIdInputs(form);
     const panel = document.createElement("section");
     panel.id = "quick-import-panel";
     panel.className = "quick-import-panel";
     panel.innerHTML = `
-      <div class="quick-import-heading"><strong>快速导入</strong><small>文件夹名 = 7位病案号</small></div>
-      <div class="quick-import-note">每个患者的全部图片放在以病案号命名的文件夹内。可选择一个患者文件夹，也可选择包含多个患者文件夹的父目录；还可一次拖入多个患者文件夹。</div>
+      <div class="quick-import-heading"><strong>快速导入</strong><small>文件夹名 = 患者ID</small></div>
+      <div class="quick-import-note">每个患者的全部图片直接放在以患者ID命名的文件夹内。文件夹叫什么，创建或复用的患者ID就是什么。可选择一个患者文件夹，也可选择包含多个患者文件夹的父目录；还可一次拖入多个患者文件夹。</div>
       <div class="quick-import-actions">
         <label class="file-button secondary-file-button">选择患者文件夹 / 父目录
           <input id="quick-import-folders" type="file" accept="image/*" webkitdirectory multiple hidden>
@@ -304,7 +318,7 @@
     }
     const {groups, rejected} = groupEntriesByPatient(entries);
     if (!groups.length) {
-      updateStatus("未发现有效患者文件夹。文件夹名必须为7位病案号，例如 1234567。\n可直接选择患者文件夹，或选择包含多个患者文件夹的父目录。");
+      updateStatus("未发现有效患者文件夹。请把每张图片直接放在以患者ID命名的文件夹内；文件夹名会原样作为患者ID。\n可直接选择患者文件夹，或选择包含多个患者文件夹的父目录。");
       return;
     }
     const imageCount = groups.reduce((sum, group) => sum + group.files.length, 0);
@@ -317,7 +331,7 @@
       session.createdCount = createdCount;
       session.existingCount = existingCount;
       session.imageCount = imageCount;
-      if (rejected.length) toast(`已忽略 ${rejected.length} 张无法从路径识别7位病案号的图片`);
+      if (rejected.length) toast(`已忽略 ${rejected.length} 张无法从路径识别患者文件夹名的图片`);
       await activateGroup(0);
     } catch (error) {
       session.active = false;

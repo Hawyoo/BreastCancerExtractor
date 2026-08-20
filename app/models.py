@@ -7,9 +7,38 @@ from app.derived_fields import is_derived_field
 PatientStatus = Literal["UNPROCESSED", "AI_PROCESSED", "REVIEW_REQUIRED", "VERIFIED"]
 Confidence = Literal["LOW", "MEDIUM", "HIGH", "VERIFIED"]
 
+WINDOWS_RESERVED_PATIENT_IDS = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+PATIENT_ID_INVALID_CHARS = set('<>:"/\\|?*')
+
+
+def validate_patient_id(value: str) -> str:
+    """Keep the user-provided folder name as the patient ID while remaining path-safe."""
+    if not value or not value.strip():
+        raise ValueError("Patient ID cannot be empty")
+    if len(value) > 120:
+        raise ValueError("Patient ID is too long")
+    if value in {".", ".."}:
+        raise ValueError("Patient ID cannot be . or ..")
+    if value.endswith((" ", ".")):
+        raise ValueError("Patient ID cannot end with a space or dot")
+    if any(ord(char) < 32 for char in value) or any(char in PATIENT_ID_INVALID_CHARS for char in value):
+        raise ValueError("Patient ID contains characters that cannot be used in a patient folder")
+    if value.split(".", 1)[0].upper() in WINDOWS_RESERVED_PATIENT_IDS:
+        raise ValueError("Patient ID is a reserved Windows folder name")
+    return value
+
 
 class PatientCreate(BaseModel):
-    patient_code: str = Field(min_length=7, max_length=7, pattern=r"^\d{7}$")
+    patient_code: str = Field(min_length=1, max_length=120)
+
+    @field_validator("patient_code")
+    @classmethod
+    def patient_id_must_be_safe_folder_name(cls, value: str) -> str:
+        return validate_patient_id(value)
 
 
 class RegionInput(BaseModel):
