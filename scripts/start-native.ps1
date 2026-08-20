@@ -11,7 +11,7 @@ try {
     $UvExe = Initialize-ProjectUv -ProjectRoot $ProjectRoot
 
     Write-Host "Starting Breast Cancer Extractor (Windows Native)..." -ForegroundColor Cyan
-    & $UvExe run --group native python -m app.native_launcher
+    & $UvExe run --group native python -m app.native_entry
     if ($LASTEXITCODE -ne 0) {
         throw "Windows Native startup failed with exit code $LASTEXITCODE."
     }
