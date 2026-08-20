@@ -75,7 +75,9 @@ def test_windows_portable_validates_real_ocr_inference_before_success():
     assert "engine.predict(" in warmup
     assert "PaddleOCR inference warm-up passed" in warmup
     assert 'Remove-Item -LiteralPath $PortableCache -Recurse -Force' in builder
-    assert '& $PortableExe --ocr-self-test' in builder
+    assert 'Start-Process -FilePath $PortableExe -ArgumentList "--ocr-self-test" -Wait -PassThru' in builder
+    assert "$SelfTest.ExitCode" in builder
+    assert "logs\\ocr-self-test.log" in builder
     assert "Finished Portable failed the OCR inference self-test" in builder
 
 

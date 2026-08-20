@@ -9,7 +9,7 @@ datas = [
     (str(root / "knowledge"), "knowledge"),
 ]
 binaries = []
-hiddenimports = ["app.main", "ocr.service"]
+hiddenimports = ["app.main", "ocr.service", "tkinter", "tkinter.ttk"]
 
 
 def paddle_submodule_filter(name):
@@ -64,7 +64,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    console=False,
 )
 
 coll = COLLECT(

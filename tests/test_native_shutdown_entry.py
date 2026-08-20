@@ -99,4 +99,6 @@ def test_windows_native_and_portable_both_use_native_entrypoint():
     spec = (root / "BreastCancerExtractor.spec").read_text(encoding="utf-8")
     assert "python -m app.native_entry" in powershell
     assert 'root / "app" / "native_entry.py"' in spec
-    assert "console=True" in spec
+    assert "console=False" in spec
+    assert '"tkinter"' in spec
+    assert '"tkinter.ttk"' in spec
