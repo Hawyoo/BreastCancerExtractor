@@ -2,6 +2,14 @@
   // This module is loaded after enhancements.js/derived_fields.js. Keep the
   // ROI, patient-browser, quick-import and post-review UI follow-ups independent
   // of whether Windows shutdown control is available (e.g. Docker gets the same behavior).
+  if (!document.querySelector('script[data-bce-editor-interactions="1"]')) {
+    const editorScript = document.createElement("script");
+    editorScript.src = "/editor_interactions.js";
+    editorScript.async = false;
+    editorScript.dataset.bceEditorInteractions = "1";
+    document.body.appendChild(editorScript);
+  }
+
   if (!document.querySelector('script[data-bce-atomic-roi="1"]')) {
     const roiScript = document.createElement("script");
     roiScript.src = "/atomic_roi.js";
