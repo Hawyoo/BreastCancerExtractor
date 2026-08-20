@@ -32,6 +32,7 @@
     patientSortScript.async = false;
     patientSortScript.dataset.bcePatientSort = "1";
     patientSortScript.onload = loadQuickImport;
+    patientSortScript.onerror = loadQuickImport;
     document.body.appendChild(patientSortScript);
   } else {
     loadQuickImport();
