@@ -47,9 +47,14 @@ def test_shutdown_control_requires_token_and_signals(tmp_path):
         server.server_close()
 
 
-def test_shutdown_button_is_windows_launcher_only():
+def test_shutdown_button_uses_form_post_instead_of_csp_blocked_fetch():
     source = (Path(__file__).parents[1] / "app" / "static" / "shutdown.js").read_text(encoding="utf-8")
     assert "bce_control_port" in source
     assert "bce_shutdown_token" in source
     assert "关闭程序" in source
     assert "window.close()" in source
+    assert 'form.method = "POST"' in source
+    assert 'form.action = `http://127.0.0.1:${encodeURIComponent(port)}/shutdown?token=${encodeURIComponent(token)}`' in source
+    assert "form.submit()" in source
+    assert "connect-src restricted to 'self'" in source
+    assert "await fetch(" not in source
