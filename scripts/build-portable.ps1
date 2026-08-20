@@ -72,9 +72,9 @@ else {
 
 Write-Step 4 "Verify OCR inference from the finished Portable"
 $PortableExe = Join-Path $PortableRoot "BreastCancerExtractor.exe"
-& $PortableExe --ocr-self-test
-if ($LASTEXITCODE -ne 0) {
-    throw "Finished Portable failed the OCR inference self-test. The dist package was not validated and must not be distributed."
+$SelfTest = Start-Process -FilePath $PortableExe -ArgumentList "--ocr-self-test" -Wait -PassThru
+if ($SelfTest.ExitCode -ne 0) {
+    throw "Finished Portable failed the OCR inference self-test. See logs\ocr-self-test.log in the Portable directory. The dist package was not validated and must not be distributed."
 }
 
 Write-Step 5 "Write Portable documentation and build metadata"
