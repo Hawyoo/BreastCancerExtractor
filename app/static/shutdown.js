@@ -1,7 +1,7 @@
 (() => {
   // This module is loaded after enhancements.js/derived_fields.js. Keep the
-  // ROI, quick-import and post-review UI follow-ups independent of whether
-  // Windows shutdown control is available (e.g. Docker gets the same behavior).
+  // ROI, patient-browser, quick-import and post-review UI follow-ups independent
+  // of whether Windows shutdown control is available (e.g. Docker gets the same behavior).
   if (!document.querySelector('script[data-bce-atomic-roi="1"]')) {
     const roiScript = document.createElement("script");
     roiScript.src = "/atomic_roi.js";
@@ -10,7 +10,8 @@
     document.body.appendChild(roiScript);
   }
 
-  if (!document.querySelector('script[data-bce-quick-import="1"]')) {
+  function loadQuickImport() {
+    if (document.querySelector('script[data-bce-quick-import="1"]')) return;
     const quickImportScript = document.createElement("script");
     quickImportScript.src = "/quick_import.js";
     quickImportScript.async = false;
@@ -23,6 +24,17 @@
       if (exitButton && typeof leavePatient === "function") exitButton.onclick = leavePatient;
     };
     document.body.appendChild(quickImportScript);
+  }
+
+  if (!document.querySelector('script[data-bce-patient-sort="1"]')) {
+    const patientSortScript = document.createElement("script");
+    patientSortScript.src = "/patient_sort.js";
+    patientSortScript.async = false;
+    patientSortScript.dataset.bcePatientSort = "1";
+    patientSortScript.onload = loadQuickImport;
+    document.body.appendChild(patientSortScript);
+  } else {
+    loadQuickImport();
   }
 
   function loadFieldValidation() {
