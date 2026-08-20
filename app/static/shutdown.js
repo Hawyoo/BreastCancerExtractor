@@ -82,44 +82,37 @@
   }
 
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const port = params.get("bce_control_port");
   const token = params.get("bce_shutdown_token");
-  if (!port || !token) return;
+  if (!token) return;
 
-  function showClosedPage() {
-    document.title = "Breast Cancer Extractor 已关闭";
+  function showClosingPage() {
+    document.title = "Breast Cancer Extractor 正在关闭";
     document.body.innerHTML = `
       <main style="font-family:Segoe UI,Arial,sans-serif;max-width:720px;margin:12vh auto;padding:32px">
-        <h1>Breast Cancer Extractor 已关闭</h1>
-        <p>本程序启动的 OCR / Ollama 相关进程正在退出。</p>
-        <p>如果此浏览器标签页没有自动关闭，这是浏览器的安全限制，可以直接关闭本页。</p>
+        <h1>Breast Cancer Extractor 正在关闭</h1>
+        <p>关闭指令已由本地主程序确认，正在停止 OCR / Ollama 并清理子进程。</p>
+        <p>Windows EXE 控制台会在清理完成后自动退出；如果浏览器标签页没有自动关闭，可以直接关闭本页。</p>
       </main>`;
   }
 
-  function submitShutdownRequest() {
-    const targetName = `bce-shutdown-${Date.now()}`;
-    const popup = window.open("about:blank", targetName, "popup,width=260,height=140");
-    if (!popup) throw new Error("浏览器阻止了本地关闭请求窗口");
-
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = `http://127.0.0.1:${encodeURIComponent(port)}/shutdown?token=${encodeURIComponent(token)}`;
-    form.target = targetName;
-    form.style.display = "none";
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-
-    showClosedPage();
-    setTimeout(() => {
-      try { popup.close(); } catch (_) {}
-    }, 700);
+  async function submitShutdownRequest() {
+    // The Windows native entrypoint exposes this route on the same FastAPI
+    // origin. It is therefore allowed by the strict `connect-src 'self'` CSP,
+    // and no popup/cross-port form workaround is needed.
+    const response = await fetch(
+      `/api/native/shutdown?token=${encodeURIComponent(token)}`,
+      {method: "POST", cache: "no-store", credentials: "same-origin"},
+    );
+    if (!response.ok) throw new Error(`关闭请求失败 (${response.status})`);
+    const payload = await response.json();
+    if (payload?.status !== "shutting_down") throw new Error("关闭控制端返回了无效状态");
+    showClosingPage();
     setTimeout(() => {
       try {
         window.open("", "_self");
         window.close();
       } catch (_) {}
-    }, 900);
+    }, 1200);
   }
 
   function installShutdownButton() {
@@ -133,16 +126,11 @@
     button.title = "关闭 BCE 及其启动的 OCR / Ollama；不会关闭你原本已启动的系统 Ollama";
     actions.insertBefore(button, document.querySelector("#service-status"));
 
-    button.onclick = () => {
+    button.onclick = async () => {
       button.disabled = true;
       button.textContent = "正在关闭…";
       try {
-        // A normal form POST is intentionally used instead of fetch(). The app
-        // CSP keeps connect-src restricted to 'self', while the shutdown
-        // controller runs on a separate random localhost port. Form navigation
-        // is not governed by connect-src and the control server still validates
-        // both Origin and the per-launch token.
-        submitShutdownRequest();
+        await submitShutdownRequest();
       } catch (error) {
         button.disabled = false;
         button.textContent = "关闭程序";

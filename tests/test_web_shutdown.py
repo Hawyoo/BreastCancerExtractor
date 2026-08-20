@@ -47,14 +47,16 @@ def test_shutdown_control_requires_token_and_signals(tmp_path):
         server.server_close()
 
 
-def test_shutdown_button_uses_form_post_instead_of_csp_blocked_fetch():
+def test_shutdown_button_uses_confirmed_same_origin_fetch_without_popup():
     source = (Path(__file__).parents[1] / "app" / "static" / "shutdown.js").read_text(encoding="utf-8")
-    assert "bce_control_port" in source
     assert "bce_shutdown_token" in source
     assert "关闭程序" in source
-    assert "window.close()" in source
-    assert 'form.method = "POST"' in source
-    assert 'form.action = `http://127.0.0.1:${encodeURIComponent(port)}/shutdown?token=${encodeURIComponent(token)}`' in source
-    assert "form.submit()" in source
-    assert "connect-src restricted to 'self'" in source
-    assert "await fetch(" not in source
+    assert 'fetch(' in source
+    assert '`/api/native/shutdown?token=${encodeURIComponent(token)}`' in source
+    assert 'method: "POST"' in source
+    assert 'credentials: "same-origin"' in source
+    assert 'payload?.status !== "shutting_down"' in source
+    assert "await submitShutdownRequest()" in source
+    assert "popup" not in source.lower()
+    assert 'form.method = "POST"' not in source
+    assert "bce_control_port" not in source
