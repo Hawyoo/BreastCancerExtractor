@@ -84,6 +84,8 @@ class ObservationCreate(BaseModel):
     model_digest: str | None = None
     prompt_version: str | None = None
     ocr_version: str | None = None
+    operator: str = Field(default="AI", min_length=1, max_length=80)
+    reason: str | None = Field(default=None, max_length=500)
 
     @field_validator("field_name")
     @classmethod
