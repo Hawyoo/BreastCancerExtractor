@@ -52,7 +52,7 @@
     const type = fieldType(observation);
     if (key === "clinical_stage") return "格式：cT…N…M…，例如 cT2N1M0；也可留空保存。";
     if (key === "pathological_stage") return "格式：pT…N…M… 或 ypT…N…M…，例如 ypT1N0M0；也可留空保存。";
-    if (type === "measurement_3d") return "格式：各径线用乘号 × 连接，例如 25×18×15；不要用逗号。也可留空保存。";
+    if (type === "measurement_3d") return "尺寸可记录 1–3 个径线，例如 25、25×18、25×18×15；多个径线统一用乘号 × 连接，不要用逗号。也可留空保存。";
     if (type === "integer") return "格式：整数，例如 13；也可留空保存。";
     if (type === "number") return "格式：数字，例如 12 或 12.5；也可留空保存。";
     if (type === "date") return "格式：YYYY-MM-DD，例如 2026-08-20；也可留空保存。";
