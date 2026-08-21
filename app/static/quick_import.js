@@ -26,14 +26,14 @@
     const style = document.createElement("style");
     style.id = "quick-import-style";
     style.textContent = `
-      .quick-import-panel{margin:8px 0 10px;padding:10px;border:1px solid var(--line,#d9dee7);border-radius:10px;background:var(--paper,#f6f4ef)}
+      .quick-import-panel{margin:10px 0 12px;padding:12px;border:2px solid var(--green-dark,#174737);border-radius:10px;background:var(--paper,#f6f4ef)}
       .quick-import-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
       .quick-import-heading strong{font-size:12px}
       .quick-import-heading small,.quick-import-note,.quick-import-status{font-size:10px;color:var(--muted,#66736d);line-height:1.45}
       .quick-import-actions{display:flex;gap:6px;align-items:center;margin-top:7px}
       .quick-import-actions .file-button,.quick-import-actions .tool{flex:1;justify-content:center;text-align:center}
-      .quick-import-drop{margin-top:7px;padding:10px;border:1px dashed var(--line,#b8c1c9);border-radius:8px;text-align:center;font-size:10px;color:var(--muted,#66736d);cursor:pointer}
-      .quick-import-drop.dragover{outline:2px solid var(--green-dark,#174737);outline-offset:-2px;background:var(--mint,#eef5f1)}
+      .quick-import-methods{margin:8px 0;padding:9px 11px;border-left:4px solid var(--green-dark,#174737);background:var(--mint,#eef5f1);font-size:11px;line-height:1.65}
+      .quick-import-methods strong{color:var(--green-dark,#174737)}
       .quick-import-status{margin-top:6px;white-space:pre-wrap}
       .quick-import-progress{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line,#d9dee7);border-radius:8px;background:var(--mint,#eef5f1);font-size:10px}
       .quick-import-progress[hidden]{display:none!important}
@@ -90,16 +90,16 @@
     panel.id = "quick-import-panel";
     panel.className = "quick-import-panel";
     panel.innerHTML = `
-      <div class="quick-import-heading"><strong>快速导入</strong><small>文件夹名 = 患者ID</small></div>
-      <div class="quick-import-note">每个患者的全部图片直接放在以患者ID命名的文件夹内。文件夹叫什么，创建或复用的患者ID就是什么。可选择一个患者文件夹，也可选择包含多个患者文件夹的父目录；还可一次拖入多个患者文件夹。</div>
+      <div class="quick-import-heading"><strong>手动选择文件夹导入</strong><small>文件夹名 = 患者ID</small></div>
+      <div class="quick-import-methods"><strong>支持两种选择方法：</strong><br>① 选择单个患者文件夹：导入该患者文件夹内的全部图片。<br>② 选择多个患者文件夹的父文件夹：一次识别并依次导入父文件夹下的所有患者文件夹。</div>
+      <div class="quick-import-note">每个患者文件夹的名称会原样作为患者ID；图片必须直接放在患者文件夹内。</div>
       <div class="quick-import-actions">
-        <label class="file-button secondary-file-button">选择患者文件夹 / 父目录
-          <input id="quick-import-folders" type="file" accept="image/*" webkitdirectory multiple hidden>
+        <label class="file-button secondary-file-button">手动选择患者文件夹或父文件夹
+          <input id="quick-import-folders" type="file" accept="image/*" webkitdirectory hidden>
         </label>
         <button id="quick-import-cancel" class="tool" type="button" hidden>取消本次快速导入</button>
       </div>
-      <div id="quick-import-drop" class="quick-import-drop" tabindex="0">也可以一次拖入多个患者文件夹</div>
-      <div id="quick-import-status" class="quick-import-status">尚未选择文件夹</div>
+      <div id="quick-import-status" class="quick-import-status">尚未选择文件夹。</div>
     `;
     form.insertAdjacentElement("afterend", panel);
 
@@ -123,66 +123,7 @@
       await beginQuickImport(entries);
     });
 
-    const drop = panel.querySelector("#quick-import-drop");
-    ["dragenter", "dragover"].forEach(name => drop.addEventListener(name, event => {
-      event.preventDefault();
-      drop.classList.add("dragover");
-    }));
-    ["dragleave", "drop"].forEach(name => drop.addEventListener(name, event => {
-      event.preventDefault();
-      drop.classList.remove("dragover");
-    }));
-    drop.addEventListener("drop", async event => {
-      try {
-        const entries = await entriesFromDataTransfer(event.dataTransfer);
-        await beginQuickImport(entries);
-      } catch (error) {
-        toast(`快速导入失败：${error.message}`);
-      }
-    });
-
     panel.querySelector("#quick-import-cancel").onclick = requestCancelQuickImport;
-  }
-
-  async function readDirectoryEntry(directoryEntry, prefix = directoryEntry.name) {
-    const reader = directoryEntry.createReader();
-    const children = [];
-    while (true) {
-      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-      if (!batch.length) break;
-      children.push(...batch);
-    }
-    const result = [];
-    for (const entry of children) {
-      const path = `${prefix}/${entry.name}`;
-      if (entry.isDirectory) {
-        result.push(...await readDirectoryEntry(entry, path));
-      } else if (entry.isFile) {
-        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
-        if (isImageFile(file)) result.push({file, relativePath: path});
-      }
-    }
-    return result;
-  }
-
-  async function entriesFromDataTransfer(dataTransfer) {
-    const items = [...(dataTransfer?.items || [])];
-    const result = [];
-    if (items.length && items.some(item => typeof item.webkitGetAsEntry === "function")) {
-      for (const item of items) {
-        const entry = item.webkitGetAsEntry?.();
-        if (!entry) continue;
-        if (entry.isDirectory) result.push(...await readDirectoryEntry(entry));
-        else if (entry.isFile) {
-          const file = item.getAsFile();
-          if (isImageFile(file)) result.push({file, relativePath: file.name});
-        }
-      }
-      return result;
-    }
-    return [...(dataTransfer?.files || [])]
-      .filter(isImageFile)
-      .map(file => ({file, relativePath: file.webkitRelativePath || file.name}));
   }
 
   function groupEntriesByPatient(entries) {
@@ -203,6 +144,7 @@
       rejected,
     };
   }
+
 
   async function ensurePatients(groups) {
     await loadPatients();

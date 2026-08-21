@@ -41,6 +41,15 @@ def test_windows_native_portable_build_is_onedir_and_reuses_core_app():
     assert 'uvicorn.Config("app.main:app"' in launcher
     assert 'uvicorn.run("ocr.service:app"' in launcher
     assert "pyinstaller --noconfirm --clean BreastCancerExtractor.spec" in builder
+    assert 'icon=str(icon_path)' in specification
+    assert '$env:BCE_BUILD_ICON = $BuildIcon' in builder
+
+
+def test_web_and_windows_use_the_same_packaged_icon():
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "app/static/index.html").read_text(encoding="utf-8")
+    assert '<link rel="icon" href="/favicon.ico" sizes="any">' in html
+    assert (root / "app/static/favicon.ico").is_file()
 
 
 def test_windows_portable_separates_patient_data_config_and_runtime():

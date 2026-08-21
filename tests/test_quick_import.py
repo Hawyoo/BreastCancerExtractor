@@ -56,15 +56,23 @@ def test_quick_import_creates_missing_patients_and_reuses_existing_patients():
     assert "patientId: patient.id" in script
 
 
-def test_quick_import_supports_parent_directory_and_multiple_folder_drop():
+def test_quick_import_explains_single_patient_and_parent_folder_selection():
     script = _script()
     assert 'id="quick-import-folders"' in script
-    assert "webkitdirectory multiple" in script
-    assert "包含多个患者文件夹的父目录" in script
-    assert "一次拖入多个患者文件夹" in script
-    assert "webkitGetAsEntry" in script
-    assert "readDirectoryEntry" in script
-    assert "entriesFromDataTransfer" in script
+    assert 'webkitdirectory hidden' in script
+    assert "手动选择患者文件夹或父文件夹" in script
+    assert "① 选择单个患者文件夹" in script
+    assert "② 选择多个患者文件夹的父文件夹" in script
+    assert "图片必须直接放在患者文件夹内" in script
+
+
+def test_quick_import_has_no_drag_and_drop_import_path():
+    script = _script()
+    assert 'addEventListener("drop"' not in script
+    assert 'addEventListener("dragover"' not in script
+    assert "webkitGetAsEntry" not in script
+    assert "entriesFromDataTransfer" not in script
+    assert "await beginQuickImport(entries)" in script
 
 
 def test_quick_import_groups_images_by_patient_and_uses_existing_raw_queue():

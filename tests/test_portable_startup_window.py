@@ -90,3 +90,9 @@ def test_startup_window_has_indeterminate_progress_and_first_run_hint():
     assert "首次启动或首次加载 OCR 时可能需要更长时间" in source
     assert "启动失败" in source
     assert "详细日志" in source
+
+
+def test_startup_window_uses_the_packaged_ribbon_magnifier_icon():
+    source = (ROOT / "app" / "startup_window.py").read_text(encoding="utf-8")
+    assert 'Path(__file__).resolve().parent / "static" / "favicon.ico"' in source
+    assert "root.iconbitmap(default=str(self.icon_path))" in source

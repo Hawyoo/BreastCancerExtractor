@@ -23,10 +23,12 @@ class PortableStartupWindow:
         *,
         on_reopen: Callable[[], bool] | None = None,
         on_shutdown: Callable[[], None] | None = None,
+        icon_path: Path | None = None,
     ) -> None:
         self.log_path = Path(log_path)
         self.on_reopen = on_reopen
         self.on_shutdown = on_shutdown
+        self.icon_path = Path(icon_path) if icon_path else Path(__file__).resolve().parent / "static" / "favicon.ico"
         self._commands: queue.Queue[tuple[str, str | None]] = queue.Queue()
         self._started = threading.Event()
         self._closed = threading.Event()
@@ -81,6 +83,13 @@ class PortableStartupWindow:
             root = tk.Tk()
             self._running = True
             root.title("Breast Cancer Extractor")
+            if self.icon_path.is_file():
+                try:
+                    root.iconbitmap(default=str(self.icon_path))
+                except tk.TclError:
+                    # The window remains usable if a non-Windows Tk runtime
+                    # cannot decode the Windows ICO resource.
+                    pass
             root.resizable(False, False)
 
             container = ttk.Frame(root, padding=(26, 22))
