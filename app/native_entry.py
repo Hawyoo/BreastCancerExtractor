@@ -17,6 +17,9 @@ _shutdown_token: str | None = None
 _startup_window: PortableStartupWindow | None = None
 _startup_complete = False
 _startup_failed = False
+_launcher_shutdown_event: threading.Event | None = None
+_browser_url: str | None = None
+_shutdown_requested = threading.Event()
 _original_start_shutdown_control = launcher._start_shutdown_control
 _original_ensure_ocr = launcher.ensure_ocr
 _original_ensure_ollama = launcher.ensure_ollama
@@ -36,9 +39,12 @@ def _capture_shutdown_control(
     shutdown_event: threading.Event,
 ):
     """Start the existing fallback control server and retain this launch token."""
-    global _shutdown_token
+    global _shutdown_token, _launcher_shutdown_event
     server, control = _original_start_shutdown_control(root, app_port, shutdown_event)
     _shutdown_token = str(control["token"])
+    _launcher_shutdown_event = shutdown_event
+    if _shutdown_requested.is_set():
+        shutdown_event.set()
     return server, control
 
 
@@ -72,6 +78,8 @@ def _native_shutdown_app(downstream, shutdown_event: threading.Event, token: str
         await send({"type": "http.response.start", "status": status, "headers": headers})
         await send({"type": "http.response.body", "body": body, "more_body": False})
         if authorized:
+            if _startup_window is not None:
+                _startup_window.closing()
             shutdown_event.set()
 
     return application
@@ -82,28 +90,57 @@ def _set_startup_status(message: str) -> None:
         _startup_window.update(message)
 
 
+def _abort_if_shutdown_requested() -> None:
+    if _shutdown_requested.is_set():
+        raise SystemExit(0)
+
+
 def _ensure_ocr_with_status(*args, **kwargs):
+    _abort_if_shutdown_requested()
     _set_startup_status("正在启动本地 OCR…")
-    return _original_ensure_ocr(*args, **kwargs)
+    result = _original_ensure_ocr(*args, **kwargs)
+    _abort_if_shutdown_requested()
+    return result
 
 
 def _ensure_ollama_with_status(*args, **kwargs):
+    _abort_if_shutdown_requested()
     _set_startup_status("正在检查本地 AI / Ollama…")
-    return _original_ensure_ollama(*args, **kwargs)
+    result = _original_ensure_ollama(*args, **kwargs)
+    _abort_if_shutdown_requested()
+    return result
+
+
+def _request_reopen_browser() -> bool:
+    if not _browser_url:
+        return False
+    try:
+        return _original_webbrowser_open(_browser_url) is not False
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
+def _request_full_shutdown() -> None:
+    """Use the launcher's normal shutdown path from the control window."""
+    _shutdown_requested.set()
+    if _startup_window is not None:
+        _startup_window.closing()
+    if _launcher_shutdown_event is not None:
+        _launcher_shutdown_event.set()
 
 
 def _open_browser_with_status(url: str, *args, **kwargs):
-    global _startup_complete, _startup_failed
+    global _startup_complete, _browser_url
+    _browser_url = url
     _set_startup_status("正在打开浏览器…")
     opened = _original_webbrowser_open(url, *args, **kwargs)
-    if opened is False:
-        _startup_failed = True
-        if _startup_window is not None:
-            _startup_window.fail("浏览器未能自动打开；程序仍在本地运行。")
-    else:
-        _startup_complete = True
-        if _startup_window is not None:
-            _startup_window.close()
+    _startup_complete = True
+    if _startup_window is not None:
+        if opened is False:
+            _startup_window.ready("✓ 系统已启动（浏览器未能自动打开）")
+        else:
+            _startup_window.ready("✓ 系统已启动")
     return opened
 
 
@@ -117,6 +154,8 @@ def _run_app_service(port: int, shutdown_event: threading.Event | None = None) -
         application = _native_shutdown_app(downstream, shutdown_event, _shutdown_token)
 
     _set_startup_status("正在启动 Web 服务…")
+    if _shutdown_requested.is_set() and shutdown_event is not None:
+        shutdown_event.set()
     config = uvicorn.Config(application, host=launcher.APP_HOST, port=port, log_level="info")
     server = uvicorn.Server(config)
     if shutdown_event is not None:
@@ -174,12 +213,16 @@ def _install_startup_hooks() -> None:
 
 
 def main() -> int:
-    global _startup_window
+    global _startup_window, _startup_failed
 
     log_path = _configure_frozen_logging()
     portable_gui = _is_frozen_windows() and not _is_service_invocation()
     if portable_gui and log_path is not None:
-        _startup_window = PortableStartupWindow(log_path)
+        _startup_window = PortableStartupWindow(
+            log_path,
+            on_reopen=_request_reopen_browser,
+            on_shutdown=_request_full_shutdown,
+        )
         _startup_window.start()
         _set_startup_status("正在准备运行环境…")
         _install_startup_hooks()
@@ -190,20 +233,18 @@ def main() -> int:
     launcher.run_app_service = _run_app_service
 
     try:
-        result = launcher.main()
-        if portable_gui and _startup_window is not None and not _startup_complete:
-            if _startup_failed:
-                _startup_window.wait_closed()
-            else:
-                _startup_window.close()
-        return result
+        return launcher.main()
     except Exception as exc:
+        _startup_failed = True
         traceback.print_exc()
         if portable_gui and _startup_window is not None and not _startup_complete:
             _startup_window.fail(f"启动失败：{exc}")
             _startup_window.wait_closed()
             return 1
         raise
+    finally:
+        if portable_gui and _startup_window is not None and not _startup_failed:
+            _startup_window.close()
 
 
 if __name__ == "__main__":
