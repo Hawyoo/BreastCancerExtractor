@@ -81,12 +81,27 @@
     loadFieldValidation();
   }
 
+  function loadTextLearningImport() {
+    if (document.querySelector('script[data-bce-text-learning-import="1"]')) return;
+    const importScript = document.createElement("script");
+    importScript.src = "/text_learning_import.js";
+    importScript.async = false;
+    importScript.dataset.bceTextLearningImport = "1";
+    document.body.appendChild(importScript);
+  }
+
   function loadTextLearning() {
-    if (document.querySelector('script[data-bce-text-learning="1"]')) return;
+    const existing = document.querySelector('script[data-bce-text-learning="1"]');
+    if (existing) {
+      if (window.BCETextLearning) loadTextLearningImport();
+      else existing.addEventListener("load", loadTextLearningImport, {once: true});
+      return;
+    }
     const learningScript = document.createElement("script");
     learningScript.src = "/text_learning.js";
     learningScript.async = false;
     learningScript.dataset.bceTextLearning = "1";
+    learningScript.onload = loadTextLearningImport;
     document.body.appendChild(learningScript);
   }
 
