@@ -22,7 +22,7 @@ async def ocr_health() -> dict[str, Any]:
 
 
 def _document_regions(path: Path) -> list[dict[str, Any]]:
-    """Return saved ROI geometry for the sanitized image being OCRed."""
+    """Return saved manual text-positioning geometry for the sanitized image."""
     try:
         relative_path = path.resolve().relative_to(settings.data_path.resolve()).as_posix()
     except (OSError, ValueError):
@@ -44,7 +44,7 @@ def _document_regions(path: Path) -> list[dict[str, Any]]:
 
 
 def _crop_region_png(source: Image.Image, region: dict[str, Any]) -> bytes | None:
-    """Crop one saved ROI from the sanitized bitmap and return PNG bytes."""
+    """Crop one saved manual text-positioning region and return PNG bytes."""
     left = max(0, math.floor(float(region["x"])))
     top = max(0, math.floor(float(region["y"])))
     right = min(source.width, math.ceil(float(region["x"]) + float(region["width"])))
@@ -67,7 +67,7 @@ async def _recognize_png_bytes(client: httpx.AsyncClient, filename: str, content
 
 
 def _compose_ai_ocr_text(page_text: str, regions: list[dict[str, Any]]) -> str:
-    """Append human-guided ROI context without pretending ROI text is verified data."""
+    """Append human-guided text-location context without treating it as verified data."""
     meaningful = [region for region in regions if str(region.get("full_text") or "").strip()]
     if not meaningful:
         return page_text
@@ -75,19 +75,19 @@ def _compose_ai_ocr_text(page_text: str, regions: list[dict[str, Any]]) -> str:
     parts = [
         page_text.rstrip(),
         "",
-        "【人工标注高信度ROI】",
+        "【人工文本定位区域】",
         (
-            "说明：以下区域由人工框选，ROI的标签/类型用于提供高可信的语义归属；"
+            "说明：以下区域由人工框选用于文本定位，区域标签/类型只提供较高可信度的语义归属；"
             "区域内文字仍由OCR识别，不等于字段值已经人工确认。"
-            "提取与ROI标签相关的字段时应优先参考对应ROI；若ROI文字与整页其他文字冲突，"
-            "不要仅因存在ROI就自动提高confidence，必须结合原文并保留真实证据。"
+            "提取与文本定位标签相关的字段时应优先参考对应区域；若局部文字与整页其他文字冲突，"
+            "不要仅因存在人工文本定位就自动提高confidence，必须结合原文并保留真实证据。"
         ),
     ]
     for index, region in enumerate(meaningful, start=1):
         parts.extend(
             [
                 "",
-                f"[高信度ROI {index}]",
+                f"[人工文本定位 {index}]",
                 f"类型：{region.get('region_type') or 'OTHER'}",
                 f"标签：{region.get('label') or '信息区域'}",
                 "局部OCR：",
@@ -98,7 +98,7 @@ def _compose_ai_ocr_text(page_text: str, regions: list[dict[str, Any]]) -> str:
 
 
 async def recognize_image(path: Path) -> dict[str, Any]:
-    """OCR the full page and, when present, separately OCR human-marked ROIs."""
+    """OCR the full page and separately OCR any saved manual text-positioning regions."""
     regions = _document_regions(path)
     try:
         async with httpx.AsyncClient(base_url=settings.ocr_url, timeout=300) as client:
@@ -125,9 +125,9 @@ async def recognize_image(path: Path) -> dict[str, Any]:
                 if cropped is None:
                     continue
                 try:
-                    roi_result = await _recognize_png_bytes(client, f"roi-{index}.png", cropped)
+                    region_result = await _recognize_png_bytes(client, f"text-region-{index}.png", cropped)
                 except httpx.HTTPStatusError as exc:
-                    # A malformed/tiny ROI should not discard an otherwise successful full-page OCR.
+                    # A malformed/tiny manual region should not discard otherwise successful full-page OCR.
                     region_results.append(
                         {
                             **region,
@@ -140,10 +140,10 @@ async def recognize_image(path: Path) -> dict[str, Any]:
                 region_results.append(
                     {
                         **region,
-                        "engine": roi_result.get("engine"),
-                        "version": roi_result.get("version"),
-                        "full_text": str(roi_result.get("full_text") or ""),
-                        "lines": roi_result.get("lines") or [],
+                        "engine": region_result.get("engine"),
+                        "version": region_result.get("version"),
+                        "full_text": str(region_result.get("full_text") or ""),
+                        "lines": region_result.get("lines") or [],
                     }
                 )
 
