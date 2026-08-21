@@ -679,8 +679,6 @@ def _local_learning_fields() -> list[dict[str, object]]:
         item = get_field(field_name)
 
         if raw_text == _MANUAL_FILL_MARKER:
-            # A manual fill without OCR evidence is useful for audit/export counts,
-            # but must not become a few-shot example that could teach a patient-specific value.
             item["manual_values"][current_value] += 1  # type: ignore[index]
             continue
 
@@ -908,11 +906,11 @@ def text_learning_prompt_section(allowed_fields: Iterable[str] | None = None) ->
         return ""
     payload = json.dumps(_prompt_learning_payload(profile), ensure_ascii=False, separators=(",", ":"))
     return (
-        "以下是本机历史人工审核形成的字段学习样例。你必须自主归纳两个方面："
+        "本地文本学习结果如下。以下是本机历史人工审核形成的字段学习样例。你必须自主归纳两个方面："
         "①该字段在什么原文条件下应如何填写/规范化；②什么样的OCR语句才是该字段的有效证据，"
         "raw_text应引用哪一段最小充分原文。examples中的evidence_text及其前后文用于学习证据选择；"
         "ai_value→verified_value用于学习历史误判与正确填写方式。"
-        "这些都是历史病例样例，绝不能把历史患者的具体值或历史evidence_text复制到当前患者。"
+        "这些都是历史病例样例，绝不能把历史患者的值复制到当前患者；也绝不能复制历史evidence_text。"
         "当前OCR没有相应证据时不得因为历史样例而填值；历史规则与当前OCR冲突时始终以当前OCR为准。"
         "导出JSON中的bbox/line_id只用于追溯和当前图片高亮，不作为跨病例像素位置规则。"
         "如果当前OCR中存在与历史样例相似的证据表达，应按历史人工审核形成的填写方式理解，"
