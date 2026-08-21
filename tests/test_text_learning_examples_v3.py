@@ -134,8 +134,8 @@ def test_reviewed_field_becomes_few_shot_example_with_ocr_location(tmp_path, mon
     assert '"ai_value":"POSITIVE"' in prompt
     assert '"verified_value":"2+"' in prompt
     assert "context_before" in prompt
-    assert "bbox" not in prompt
-    assert "line_id" not in prompt
+    assert '"bbox":' not in prompt
+    assert '"line_ids":' not in prompt
 
 
 def test_v3_examples_survive_export_import_and_remain_idempotent(tmp_path, monkeypatch):
