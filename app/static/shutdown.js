@@ -1,6 +1,6 @@
 (() => {
   // This module is loaded after enhancements.js/derived_fields.js. Keep the
-  // ROI, patient-browser, quick-import and post-review UI follow-ups independent
+  // text-positioning, patient-browser, quick-import and post-review UI follow-ups independent
   // of whether Windows shutdown control is available (e.g. Docker gets the same behavior).
   function loadRoiGreen() {
     if (document.querySelector('script[data-bce-roi-green="1"]')) return;
@@ -80,6 +80,17 @@
   } else {
     loadFieldValidation();
   }
+
+  function loadTextLearning() {
+    if (document.querySelector('script[data-bce-text-learning="1"]')) return;
+    const learningScript = document.createElement("script");
+    learningScript.src = "/text_learning.js";
+    learningScript.async = false;
+    learningScript.dataset.bceTextLearning = "1";
+    document.body.appendChild(learningScript);
+  }
+
+  loadTextLearning();
 
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const token = params.get("bce_shutdown_token");
