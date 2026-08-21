@@ -147,7 +147,7 @@ def _open_browser_with_status(url: str, *args, **kwargs):
 def _run_app_service(port: int, shutdown_event: threading.Event | None = None) -> None:
     import uvicorn
 
-    from app.main import app as downstream
+    from app.server import app as downstream
 
     application = downstream
     if shutdown_event is not None and _shutdown_token:
