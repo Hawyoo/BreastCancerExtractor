@@ -17,9 +17,9 @@ router = APIRouter()
 def get_text_learning() -> dict[str, object]:
     profile = build_text_learning_profile(max_fields=1000, max_examples_per_field=100)
     return {
+        **profile,
         "type": "bce_text_learning",
         "version": 2,
-        **profile,
         "imported": imported_text_learning_status(),
     }
 
