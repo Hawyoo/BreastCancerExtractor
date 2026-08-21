@@ -47,6 +47,14 @@
             <input id="patient-code" placeholder="7位病案号" inputmode="numeric" pattern="\d{7}" maxlength="7" required>
             <button type="submit">新建</button>
           </form>
+          <section class="learning-transfer-bar" aria-label="文本学习记录迁移">
+            <div class="learning-transfer-actions">
+              <button id="export-text-learning" class="tool" type="button">导出学习 JSON</button>
+              <button id="import-text-learning" class="tool" type="button">导入学习 JSON</button>
+              <input id="import-text-learning-file" type="file" accept=".json,application/json" hidden>
+            </div>
+            <small id="text-learning-status" class="text-learning-status" role="status" aria-live="polite">学习样例：读取中…</small>
+          </section>
           <div id="patient-list" class="patient-list"></div>
           <section id="patient-package-panel" class="patient-package-panel" hidden>
             <div class="panel-title">
@@ -287,5 +295,7 @@
   <script src="/app.js" defer></script>
   <script src="/enhancements.js" defer></script>
   <script src="/derived_fields.js" defer></script>
+  <script src="/text_learning.js" defer></script>
+  <script src="/text_learning_import.js" defer></script>
 </body>
 </html>

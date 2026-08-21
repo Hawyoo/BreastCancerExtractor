@@ -81,32 +81,6 @@
     loadFieldValidation();
   }
 
-  function loadTextLearningImport() {
-    if (document.querySelector('script[data-bce-text-learning-import="1"]')) return;
-    const importScript = document.createElement("script");
-    importScript.src = "/text_learning_import.js";
-    importScript.async = false;
-    importScript.dataset.bceTextLearningImport = "1";
-    document.body.appendChild(importScript);
-  }
-
-  function loadTextLearning() {
-    const existing = document.querySelector('script[data-bce-text-learning="1"]');
-    if (existing) {
-      if (window.BCETextLearning) loadTextLearningImport();
-      else existing.addEventListener("load", loadTextLearningImport, {once: true});
-      return;
-    }
-    const learningScript = document.createElement("script");
-    learningScript.src = "/text_learning.js";
-    learningScript.async = false;
-    learningScript.dataset.bceTextLearning = "1";
-    learningScript.onload = loadTextLearningImport;
-    document.body.appendChild(learningScript);
-  }
-
-  loadTextLearning();
-
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const token = params.get("bce_shutdown_token");
   if (!token) return;
@@ -124,7 +98,7 @@
   async function submitShutdownRequest() {
     // The Windows native entrypoint exposes this route on the same FastAPI
     // origin. It is therefore allowed by the strict `connect-src 'self'` CSP,
-    // and no popup/cross-port form workaround is needed.
+    // and no cross-port form workaround is needed.
     const response = await fetch(
       `/api/native/shutdown?token=${encodeURIComponent(token)}`,
       {method: "POST", cache: "no-store", credentials: "same-origin"},

@@ -38,7 +38,7 @@ def test_windows_native_portable_build_is_onedir_and_reuses_core_app():
 
     assert "COLLECT(" in specification
     assert 'name="BreastCancerExtractor"' in specification
-    assert 'uvicorn.run("app.main:app"' in launcher
+    assert 'uvicorn.Config("app.main:app"' in launcher
     assert 'uvicorn.run("ocr.service:app"' in launcher
     assert "pyinstaller --noconfirm --clean BreastCancerExtractor.spec" in builder
 

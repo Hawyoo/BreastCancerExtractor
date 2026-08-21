@@ -71,6 +71,13 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
 .patient-form { display: flex; gap: 7px; margin: 16px 0; }
 .patient-form input, .import-options input, select { width: 100%; min-width: 0; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: var(--control); }
 .patient-form button, .primary, .file-button { border: 0; color: white; background: var(--green); border-radius: 8px; padding: 9px 13px; }
+.learning-transfer-bar { display: grid; gap: 7px; margin: -4px 0 16px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--control); }
+.learning-transfer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.learning-transfer-actions .tool { width: 100%; }
+.text-learning-status { color: var(--muted); line-height: 1.35; }
+.editor-help { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.editor-help > span { min-width: 0; }
+.editor-help > button { flex: 0 0 auto; }
 .patient-list { display: grid; gap: 8px; }
 .data-preview-view { padding: 22px; }
 .data-preview-view[hidden] { display: none; }

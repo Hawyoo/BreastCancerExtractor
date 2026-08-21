@@ -167,7 +167,13 @@ def normalize_tnm(value: object) -> str:
     prefix = prefix_match.group(1).lower()
     body = text[prefix_match.end():]
     # Canonical compact notation uses the classification prefix once: cT2N1M0 / ypT1N0M0.
-    body = re.sub(r"(?:YC|YP|C|P)(?=N)", "", body)
+    # Remove only a repeated copy of the active classification prefix.  A
+    # blanket removal of ``C`` before N incorrectly changed pT1cN0M0 into
+    # pT1N0M0 by treating the valid T1c subcategory as a clinical prefix.
+    repeated_prefix = re.escape(prefix_match.group(1))
+    body = re.sub(rf"{repeated_prefix}(?=N)", "", body)
+    # N categories do not use a trailing C subcategory, so any classification
+    # marker immediately before M is redundant (including mixed cM0 input).
     body = re.sub(r"(?:YC|YP|C|P)(?=M)", "", body)
     return prefix + body
 
@@ -1259,6 +1265,50 @@ def verify_observation(observation_id: str, payload: ObservationVerify) -> dict[
                 (now, observation["patient_id"]),
             )
     return {"id": observation_id, "status": "VERIFIED", "confidence": "VERIFIED"}
+
+
+@app.delete("/api/observations/{observation_id}/evidence-location")
+def reject_observation_evidence_location(observation_id: str) -> dict[str, str]:
+    observation = get_observation(observation_id)
+    now = utc_now()
+    with connect() as db:
+        db.execute(
+            "UPDATE observations SET evidence_status='REJECTED',updated_at=? WHERE id=?",
+            (now, observation_id),
+        )
+        db.execute(
+            """INSERT INTO audit_log
+               (patient_id,document_id,field_name,operation,old_value,new_value,operator,reason,timestamp)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                observation["patient_id"], observation["document_id"], observation["field_name"],
+                "USER_REJECT_EVIDENCE_LOCATION", observation["raw_text"], None,
+                "local-user", "人工删除错误的自动文本定位", now,
+            ),
+        )
+    return {"id": observation_id, "evidence_status": "REJECTED"}
+
+
+@app.post("/api/observations/{observation_id}/evidence-location/restore")
+def restore_observation_evidence_location(observation_id: str) -> dict[str, str]:
+    observation = get_observation(observation_id)
+    now = utc_now()
+    with connect() as db:
+        db.execute(
+            "UPDATE observations SET evidence_status='AUTO',updated_at=? WHERE id=?",
+            (now, observation_id),
+        )
+        db.execute(
+            """INSERT INTO audit_log
+               (patient_id,document_id,field_name,operation,old_value,new_value,operator,reason,timestamp)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                observation["patient_id"], observation["document_id"], observation["field_name"],
+                "USER_RESTORE_EVIDENCE_LOCATION", None, observation["raw_text"],
+                "local-user", "恢复自动文本定位", now,
+            ),
+        )
+    return {"id": observation_id, "evidence_status": "AUTO"}
 
 
 @app.get("/api/models/local-files")

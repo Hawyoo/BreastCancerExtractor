@@ -97,15 +97,16 @@ def test_overlapping_imports_keep_highest_pattern_count(tmp_path, monkeypatch):
 
 def test_import_frontend_and_supported_entrypoints_are_wired():
     import_script = (ROOT / "app/static/text_learning_import.js").read_text(encoding="utf-8")
-    loader = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     native = (ROOT / "app/native_entry.py").read_text(encoding="utf-8")
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     server = (ROOT / "app/server.py").read_text(encoding="utf-8")
 
-    assert 'importButton.textContent = "导入学习JSON"' in import_script
+    assert 'id="import-text-learning"' in html
+    assert 'id="export-text-learning"' in html
     assert 'api("/api/text-learning/import"' in import_script
     assert 'api("/api/text-learning")' in import_script
-    assert 'importScript.src = "/text_learning_import.js"' in loader
+    assert '<script src="/text_learning_import.js" defer></script>' in html
     assert "from app.server import app as downstream" in native
     assert '"app.server:app"' in dockerfile
     assert "app.include_router(text_learning_router)" in server

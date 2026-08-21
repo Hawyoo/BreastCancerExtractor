@@ -17,7 +17,7 @@ def add_and_verify(client, patient_id: int, field_name: str, value: str) -> str:
             "source_mode": "RECORDED",
         },
     )
-    assert created.status_code == 200, created.text
+    assert created.status_code == 201, created.text
     observation_id = created.json()["id"]
     verified = client.post(
         f"/api/observations/{observation_id}/verify",

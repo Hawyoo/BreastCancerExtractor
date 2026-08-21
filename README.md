@@ -477,3 +477,36 @@ build-portable-with-ollama.bat
 - 患者数据库；
 - 本地模型权重；
 - 机构内部知识库。
+
+---
+
+# 知识库主要来源
+
+完整的版本、用途和授权信息记录在 `knowledge/references/sources.yaml`。当前登记的主要来源如下：
+
+- 项目问卷：https://f.kdocs.cn/g/kD2Xj3eU/
+- 国家卫健委乳腺癌诊疗指南：https://www.nhc.gov.cn/yzygj/c100068/202204/0c1f7d3aca0545abbeb02030ce255930.shtml
+- CACA-CBCS 指南：https://www.china-oncology.com/fileup/1007-3639/PDF/1703749976314-541179100.pdf
+- AJCC 当前分期系统：https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/version-9/
+- AJCC 分期产品：https://www.facs.org/quality-programs/cancer-programs/american-joint-committee-on-cancer/cancer-staging-systems/cancer-staging-system-products/
+- NCI Breast Cancer PDQ：https://www.cancer.gov/types/breast/hp/breast-treatment-pdq
+- WHO Breast Tumours：https://tumourclassification.iarc.who.int/index.html
+- CAP Breast Protocols：https://www.cap.org/protocols-and-guidelines/cancer-protocols/current-cancer-protocols/
+- ASCO/CAP ER/PR：https://www.cap.org/protocols-and-guidelines/cap-guidelines/current-cap-guidelines/guideline-recommendations-for-immunohistochemical-testing-of-estrogen-and-progesterone-receptors-in-breast-cancer
+- ASCO/CAP HER2：https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/
+- International Ki67 Working Group：https://pubmed.ncbi.nlm.nih.gov/33369635/
+- St Gallen 2013：https://pmc.ncbi.nlm.nih.gov/articles/PMC3755334/
+- FDA pCR 指南：https://www.fda.gov/regulatory-information/search-fda-guidance-documents/pathological-complete-response-neoadjuvant-treatment-high-risk-early-stage-breast-cancer-use
+- Miller-Payne：https://pubmed.ncbi.nlm.nih.gov/14659147/
+- RCB 原始研究：https://ascopubs.org/doi/10.1200/JCO.2007.10.6823
+- RCB 计算器：https://www.mdanderson.org/for-physicians/clinical-tools-resources/clinical-calculators/residual-cancer-burden.html
+- RECIST 1.1：https://recist.eortc.org/wp-content/uploads/sites/4/2015/03/RECISTGuidelines.pdf
+- ACR BI-RADS：https://www.acr.org/Clinical-Resources/Reporting-and-Data-Systems/Bi-Rads
+- mCODE：https://hl7.org/fhir/us/mcode/
+- NCI Thesaurus：https://www.cancer.gov/about-nci/organization/cbiit/vocabulary
+- ICD-O-3.2：https://www.who.int/standards/classifications/other-classifications/international-classification-of-diseases-for-oncology
+- LOINC：https://loinc.org/downloads/
+- RxNorm：https://www.nlm.nih.gov/research/umls/rxnorm/overview.html
+- ATC/DDD：https://www.who.int/teams/health-product-and-policy-standards/inn/atc-ddd
+- NCI Drug Dictionary：https://www.cancer.gov/publications/dictionaries/cancer-drug
+- SNOMED CT：https://docs.snomed.org/snomed-ct-user-guides/mlds-user-guide/member-affiliate-licensing-information

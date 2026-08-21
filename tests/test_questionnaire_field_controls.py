@@ -46,7 +46,7 @@ def test_review_ui_uses_numeric_multiselect_and_nested_chronic_flow():
 
 
 def test_tnm_basis_is_hidden_for_non_tnm_fields():
-    javascript = (ROOT / "app/static/review_inline.js").read_text(encoding="utf-8")
-    assert 'const TNM_FIELDS = new Set(["clinical_stage", "pathological_stage"])' in javascript
-    assert 'if (basisBox && !TNM_FIELDS.has(observation.field_name))' in javascript
-    assert 'basisBox.hidden = true' in javascript
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert '["clinical_stage","pathological_stage"].includes(observation.field_name)' in javascript
+    assert "basisBox.hidden=!showTnmBasis" in javascript
+    assert 'basisBox.innerHTML=showTnmBasis?' in javascript

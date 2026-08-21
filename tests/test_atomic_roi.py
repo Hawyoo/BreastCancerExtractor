@@ -24,7 +24,7 @@ def test_atomic_roi_policy_explicitly_allows_overlapping_single_item_boxes():
         (ROOT / "knowledge/schema/document_roi_mapping.yaml").read_text(encoding="utf-8")
     )
     rules = "\n".join(mapping["global_rules"])
-    assert "一个 ROI 只允许" in rules
+    assert "每个 ROI 只允许" in rules
     assert "逐项建立 ROI" in rules
     assert "可以重叠" in rules
 
@@ -99,6 +99,6 @@ def test_frontend_runtime_menu_uses_atomic_options_and_removes_composite_labels(
 def test_atomic_roi_override_loads_before_windows_shutdown_early_return():
     javascript = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
     loader = javascript.index('roiScript.src = "/atomic_roi.js"')
-    early_return = javascript.index("if (!port || !token) return")
+    early_return = javascript.index("if (!token) return")
     assert loader < early_return
     assert 'roiScript.dataset.bceAtomicRoi = "1"' in javascript

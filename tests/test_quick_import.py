@@ -109,7 +109,7 @@ def test_quick_import_loader_runs_on_web_docker_and_windows_before_shutdown_earl
     shutdown = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
     loader = shutdown.index('quickImportScript.src = "/quick_import.js"')
     params = shutdown.index("const params = new URLSearchParams")
-    early_return = shutdown.index("if (!port || !token) return")
+    early_return = shutdown.index("if (!token) return")
     assert loader < params < early_return
     assert 'data-bce-quick-import="1"' in shutdown
     assert "quickImportScript.onload" in shutdown

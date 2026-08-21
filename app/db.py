@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS observations (
     model_digest TEXT,
     prompt_version TEXT,
     ocr_version TEXT,
+    evidence_status TEXT NOT NULL DEFAULT 'AUTO',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -214,6 +215,7 @@ def init_db(path: Path | None = None) -> None:
             "source_mode": "ALTER TABLE observations ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'RECORDED'",
             "derivation_json": "ALTER TABLE observations ADD COLUMN derivation_json TEXT",
             "ruleset_version": "ALTER TABLE observations ADD COLUMN ruleset_version TEXT",
+            "evidence_status": "ALTER TABLE observations ADD COLUMN evidence_status TEXT NOT NULL DEFAULT 'AUTO'",
         }
         for column, statement in migrations.items():
             if column not in existing:

@@ -94,13 +94,16 @@ def test_human_corrections_become_machine_readable_learning_and_prompt_context(t
     assert "raw_text必须尽量逐字引用当前OCR中的最小充分证据" in prompt
 
 
-def test_frontend_exports_learning_json_and_maps_raw_text_to_ocr_bbox():
+def test_frontend_wires_backend_learning_export_and_maps_raw_text_to_ocr_bbox():
     script = (ROOT / "app/static/text_learning.js").read_text(encoding="utf-8")
-    loader = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
+    controls = (ROOT / "app/static/text_learning_import.js").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
 
-    assert 'learningScript.src = "/text_learning.js"' in loader
-    assert 'button.textContent = "导出学习JSON"' in script
-    assert 'type: "bce_text_learning"' in script
+    assert '<script src="/text_learning.js" defer></script>' in html
+    assert '<script src="/text_learning_import.js" defer></script>' in html
+    assert 'id="export-text-learning"' in html
+    assert 'api("/api/text-learning")' in controls
+    assert "downloadJson(payload)" in controls
     assert "result_json" in script
     assert "observation.raw_text" in script
     assert "ocr_confidence" in script
@@ -108,4 +111,4 @@ def test_frontend_exports_learning_json_and_maps_raw_text_to_ocr_bbox():
     assert "rectFromOcrBox" in script
     assert "locateObservationEvidence" in script
     assert '[/查看来源图/g, "文本定位"]' in script
-    assert "BCE_text_learning_" in script
+    assert "BCE_text_learning_v3_" in controls

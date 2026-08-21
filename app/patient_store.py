@@ -555,7 +555,7 @@ def import_patient_package(
                 """INSERT INTO observations
                    (id,patient_id,document_id,region_id,field_name,ai_value,current_value,raw_text,confidence,status,
                     source_mode,derivation_json,ruleset_version,model_name,model_digest,prompt_version,ocr_version,
-                    created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    evidence_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     observation_id,
                     patient_id,
@@ -574,6 +574,7 @@ def import_patient_package(
                     observation["model_digest"],
                     observation["prompt_version"],
                     observation["ocr_version"],
+                    observation.get("evidence_status") or "AUTO",
                     observation["created_at"],
                     observation["updated_at"],
                 ),

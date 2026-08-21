@@ -12,9 +12,10 @@ def test_completed_patient_review_is_inline_and_direct_editable():
     assert 'reviewDialog.classList.add("patient-review-inline")' in source
     assert 'reviewDialog.querySelector(".manual-field-tools")?.remove()' in source
     assert 'input.className = "patient-review-inline-input"' in source
-    assert 'saveInlineField(column, observation, input, saveButton)' in source
+    assert 'saveInlineField(column, observation, editor.input, saveButton)' in source
     assert '患者事后回顾内嵌面板手动修改' in source
-    assert 'raw_text: "人工手动补充"' in source
+    assert 'raw_text: YES_NO_FIELD_KEYS.has(column.key)' in source
+    assert '"人工手动补充"' in source
 
 
 def test_inline_review_is_height_limited_and_scrollable():
@@ -31,6 +32,6 @@ def test_inline_review_is_height_limited_and_scrollable():
 def test_review_module_loads_even_without_windows_shutdown_control():
     source = (ROOT / "app" / "static" / "shutdown.js").read_text(encoding="utf-8")
     loader = source.index('reviewScript.src = "/review_inline.js"')
-    shutdown_guard = source.index("if (!port || !token) return;")
+    shutdown_guard = source.index("if (!token) return;")
 
     assert loader < shutdown_guard

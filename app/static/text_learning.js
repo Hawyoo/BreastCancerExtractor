@@ -1,164 +1,11 @@
-/* Text learning + OCR evidence positioning.
- * Human edits are learned by the backend from the audit trail. This frontend
- * module exports the same correction history as machine-readable JSON and maps
- * each extracted field back to the most relevant OCR line/bbox on the image.
+/* OCR evidence positioning for reviewed fields.
+ * Text-learning import/export is owned by text_learning_import.js and the
+ * backend API. This module only maps evidence text to OCR line/bbox locations.
  */
 (() => {
-  const EXPORT_STORAGE_KEY = "bce-text-learning-v2";
-  const EXCLUDED_FIELDS = new Set(["record_number", "contact"]);
   const MANUAL_FILL_MARKER = "人工手动补充";
 
-  function isDerivedKey(key) {
-    const value = String(key || "").trim();
-    return [
-      "clinical_t_component", "clinical_n_component", "clinical_m_component",
-      "pathological_t_component", "pathological_n_component", "pathological_m_component",
-    ].includes(value) || /_dim[123]_mm$/.test(value);
-  }
-
   const text = value => String(value ?? "").trim();
-
-  function increment(map, key, payload) {
-    if (!map.has(key)) map.set(key, {...payload, count: 0});
-    map.get(key).count += 1;
-  }
-
-  async function collectTextLearningJson() {
-    const patients = state.patients?.length ? state.patients : await api("/api/patients");
-    const details = [];
-    for (const patient of patients) {
-      try {
-        details.push(await api(`/api/patients/${patient.id}`));
-      } catch (_) {
-        // A patient can disappear while scanning; skip only that patient.
-      }
-    }
-
-    const fields = new Map();
-    let editCount = 0;
-    let manualFillCount = 0;
-
-    function fieldStats(fieldName, label = "") {
-      if (!fields.has(fieldName)) {
-        fields.set(fieldName, {
-          field_name: fieldName,
-          label: label || fieldName,
-          edit_count: 0,
-          manual_fill_count: 0,
-          corrections: new Map(),
-          manual_values: new Map(),
-        });
-      }
-      const item = fields.get(fieldName);
-      if (label && item.label === item.field_name) item.label = label;
-      return item;
-    }
-
-    for (const detail of details) {
-      const byField = new Map((detail.observations || []).map(item => [item.field_name, item]));
-      for (const audit of detail.audit_log || []) {
-        if (!["USER_EDIT", "USER_EDIT_VERIFIED"].includes(audit.operation)) continue;
-        const fieldName = text(audit.field_name);
-        if (!fieldName || EXCLUDED_FIELDS.has(fieldName) || isDerivedKey(fieldName)) continue;
-        const from = text(audit.old_value);
-        const to = text(audit.new_value);
-        if (!to || from === to) continue;
-        const reason = text(audit.reason);
-        const observation = byField.get(fieldName);
-        const item = fieldStats(fieldName, observation?.field_label || "");
-        item.edit_count += 1;
-        editCount += 1;
-        increment(item.corrections, JSON.stringify([from, to, reason]), {
-          from,
-          to,
-          ...(reason ? {reason} : {}),
-          pattern: `${from || "∅"} → ${to}${reason ? `（${reason}）` : ""}`,
-        });
-      }
-
-      for (const observation of detail.observations || []) {
-        const fieldName = text(observation.field_name);
-        if (!fieldName || EXCLUDED_FIELDS.has(fieldName) || isDerivedKey(fieldName)) continue;
-        if (text(observation.raw_text) !== MANUAL_FILL_MARKER) continue;
-        const value = text(observation.current_value);
-        if (!value) continue;
-        const item = fieldStats(fieldName, observation.field_label || "");
-        item.manual_fill_count += 1;
-        manualFillCount += 1;
-        increment(item.manual_values, value, {value});
-      }
-    }
-
-    const fieldRows = [...fields.values()].map(item => ({
-      field_name: item.field_name,
-      label: item.label,
-      edit_count: item.edit_count,
-      manual_fill_count: item.manual_fill_count,
-      corrections: [...item.corrections.values()].sort((a, b) => b.count - a.count),
-      manual_values: [...item.manual_values.values()].sort((a, b) => b.count - a.count),
-    })).sort((a, b) =>
-      (b.edit_count + b.manual_fill_count) - (a.edit_count + a.manual_fill_count)
-      || a.field_name.localeCompare(b.field_name)
-    );
-
-    return {
-      version: 2,
-      type: "bce_text_learning",
-      source: "local_human_corrections",
-      generated_at: new Date().toISOString(),
-      patient_count: details.length,
-      edit_count: editCount,
-      manual_fill_count: manualFillCount,
-      fields: fieldRows,
-      policy: {
-        use: "learn_field_interpretation_format_and_correction_patterns",
-        never_copy_historical_patient_values: true,
-        require_current_ocr_evidence: true,
-      },
-    };
-  }
-
-  function downloadJson(payload) {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-    anchor.href = url;
-    anchor.download = `BCE_text_learning_${stamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  function installLearningExportButton() {
-    const improve = document.querySelector("#improve-learning");
-    if (!improve || document.querySelector("#export-text-learning")) return;
-    improve.title = "汇总人工修改与补填；这些纠错会自动用于后续文本识别";
-    const button = document.createElement("button");
-    button.id = "export-text-learning";
-    button.type = "button";
-    button.className = "tool";
-    button.textContent = "导出学习JSON";
-    button.title = "导出可供AI读取的本地文本学习结果";
-    improve.insertAdjacentElement("afterend", button);
-    button.onclick = async () => {
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = "正在整理…";
-      try {
-        const payload = await collectTextLearningJson();
-        localStorage.setItem(EXPORT_STORAGE_KEY, JSON.stringify(payload));
-        downloadJson(payload);
-        toast(`文本学习JSON已导出：${payload.edit_count} 条修改，${payload.manual_fill_count} 条补填`);
-      } catch (error) {
-        toast(`导出文本学习失败：${error.message}`);
-      } finally {
-        button.disabled = false;
-        button.textContent = original;
-      }
-    };
-  }
 
   function normalizeForMatch(value) {
     return text(value)
@@ -234,7 +81,11 @@
 
   function locateObservationEvidence(documentId, observationId) {
     const observation = (state.patient?.observations || []).find(item => item.id === observationId);
-    if (!observation || text(observation.raw_text) === MANUAL_FILL_MARKER) return [];
+    if (
+      !observation
+      || observation.evidence_status === "REJECTED"
+      || text(observation.raw_text) === MANUAL_FILL_MARKER
+    ) return [];
     const evidence = text(observation.raw_text) || text(observation.ai_value) || text(observation.current_value);
     if (!evidence) return [];
 
@@ -287,6 +138,52 @@
 
   if (typeof state !== "undefined") state.smartEvidenceBoxes = [];
 
+  function evidenceHelp(documentId, observation) {
+    const help = document.querySelector("#editor-help");
+    if (!help || !observation) return;
+    help.replaceChildren();
+
+    const message = document.createElement("span");
+    if (observation.evidence_status === "REJECTED") {
+      message.textContent = "该字段的错误文本定位已删除，不再用于定位学习。";
+    } else if (state.smartEvidenceBoxes.length) {
+      const best = Math.max(...state.smartEvidenceBoxes.map(item => item.score));
+      message.textContent = `已自动定位该字段的OCR证据文字（匹配度 ${Math.round(best * 100)}%）；绿色高亮为文本证据位置。`;
+    } else {
+      message.textContent = "已打开来源图片，但没有找到足够可靠的OCR文本位置；请根据证据原文人工核对。";
+    }
+    help.appendChild(message);
+
+    if (observation.evidence_status !== "REJECTED" && !state.smartEvidenceBoxes.length) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = observation.evidence_status === "REJECTED" ? "tool" : "danger-tool";
+    button.textContent = observation.evidence_status === "REJECTED" ? "恢复自动定位" : "删除错误定位";
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        if (observation.evidence_status === "REJECTED") {
+          await api(`/api/observations/${observation.id}/evidence-location/restore`, {method: "POST"});
+          observation.evidence_status = "AUTO";
+          state.smartEvidenceBoxes = locateObservationEvidence(documentId, observation.id);
+          toast("已恢复该字段的自动文本定位");
+        } else {
+          await api(`/api/observations/${observation.id}/evidence-location`, {method: "DELETE"});
+          observation.evidence_status = "REJECTED";
+          state.smartEvidenceBoxes = [];
+          toast("错误文本定位已删除，并已排除出定位学习");
+        }
+        draw();
+        evidenceHelp(documentId, observation);
+      } catch (error) {
+        toast(`更新文本定位失败：${error.message}`);
+        button.disabled = false;
+      }
+    };
+    help.appendChild(button);
+  }
+
   function ensureFunctionWrappers() {
     if (typeof draw === "function" && !draw.__bceTextLocationWrapped) {
       const previousDraw = draw;
@@ -303,17 +200,10 @@
       const previousOpen = openSavedDocumentPreview;
       const wrappedOpen = async (documentId, observationId = null) => {
         const result = await previousOpen(documentId, observationId);
+        const observation = (state.patient?.observations || []).find(item => item.id === observationId);
         state.smartEvidenceBoxes = observationId ? locateObservationEvidence(documentId, observationId) : [];
         draw();
-        if (observationId) {
-          const help = document.querySelector("#editor-help");
-          if (help && state.smartEvidenceBoxes.length) {
-            const best = Math.max(...state.smartEvidenceBoxes.map(item => item.score));
-            help.textContent = `已自动定位该字段的OCR证据文字（匹配度 ${Math.round(best * 100)}%）；绿色高亮为文本证据位置。`;
-          } else if (help) {
-            help.textContent = "已打开来源图片，但没有找到足够可靠的OCR文本位置；请根据证据原文人工核对。";
-          }
-        }
+        if (observationId) evidenceHelp(documentId, observation);
         return result;
       };
       wrappedOpen.__bceTextLocationWrapped = true;
@@ -368,32 +258,20 @@
     }
   }
 
-  function improveLearningDialogCopy() {
-    const help = document.querySelector("#learning-summary-dialog .queue-help");
-    if (!help) return;
-    const copy = "人工修改与人工补填会自动进入本地文本学习，并用于后续AI提取的纠错；这里仅展示汇总。可在患者列表上方导出JSON供AI或迁移使用。";
-    if (help.textContent !== copy) help.textContent = copy;
-  }
-
   const observer = new MutationObserver(records => {
     for (const record of records) {
       if (record.type === "characterData") replaceUiTerminology(record.target);
       for (const node of record.addedNodes || []) replaceUiTerminology(node);
     }
-    installLearningExportButton();
-    improveLearningDialogCopy();
     ensureFunctionWrappers();
   });
   observer.observe(document.body, {childList: true, subtree: true, characterData: true});
 
   replaceUiTerminology();
-  installLearningExportButton();
-  improveLearningDialogCopy();
   ensureFunctionWrappers();
   [0, 200, 1000].forEach(delay => setTimeout(ensureFunctionWrappers, delay));
 
   window.BCETextLearning = {
-    collectTextLearningJson,
     locateObservationEvidence,
     textSimilarity,
   };

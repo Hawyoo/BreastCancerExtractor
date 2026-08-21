@@ -84,7 +84,7 @@ def test_validation_module_loads_after_review_inline_on_all_runtimes():
     shutdown = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
     review = shutdown.index('reviewScript.src = "/review_inline.js"')
     validation = shutdown.index('validationScript.src = "/field_validation.js"')
-    early_return = shutdown.index("if (!port || !token) return")
+    early_return = shutdown.index("if (!token) return")
     assert validation < review < early_return
     assert "reviewScript.onload = loadFieldValidation" in shutdown
     assert 'data-bce-field-validation="1"' in shutdown

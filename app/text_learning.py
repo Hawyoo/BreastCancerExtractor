@@ -380,6 +380,9 @@ def _normalize_example(field_name: str, raw: object) -> dict[str, object] | None
         "human_verified": bool(raw.get("human_verified", True)),
         "correction_reason": reason,
         "learning_weight": round(learning_weight, 2),
+        "evidence_rejected": bool(raw.get("evidence_rejected")) or bool(
+            isinstance(evidence_raw, dict) and evidence_raw.get("rejected_by_user")
+        ),
         "evidence": {
             "text": evidence_text,
             "matched": matched,
@@ -659,6 +662,7 @@ def _local_learning_fields() -> list[dict[str, object]]:
             observations = db.execute(
                 """SELECT o.id,o.patient_id,o.document_id,o.field_name,o.ai_value,o.current_value,
                           o.raw_text,o.confidence,o.status,o.source_mode,o.updated_at,
+                          o.evidence_status,
                           d.document_type,d.width,d.height,r.result_json
                    FROM observations o
                    LEFT JOIN documents d ON d.id=o.document_id
@@ -698,7 +702,20 @@ def _local_learning_fields() -> list[dict[str, object]]:
         if not reason and matching_audits:
             reason = _clean(matching_audits[0]["reason"], limit=_MAX_REASON)
 
-        evidence = _locate_evidence(raw_text, row["result_json"], row["width"], row["height"])
+        evidence_rejected = str(row["evidence_status"] or "AUTO").upper() == "REJECTED"
+        evidence = (
+            {
+                "text": "",
+                "matched": False,
+                "line_ids": [],
+                "lines": [],
+                "context_before": "",
+                "context_after": "",
+                "rejected_by_user": True,
+            }
+            if evidence_rejected
+            else _locate_evidence(raw_text, row["result_json"], row["width"], row["height"])
+        )
         value_changed = bool(ai_value and ai_value != current_value)
         learning_weight = 3.0 if value_changed else (2.0 if human_verified else 1.5)
         if evidence.get("matched"):
@@ -711,6 +728,7 @@ def _local_learning_fields() -> list[dict[str, object]]:
             "human_verified": human_verified or human_edited,
             "correction_reason": reason,
             "learning_weight": learning_weight,
+            "evidence_rejected": evidence_rejected,
             "evidence": evidence,
         }
         normalized = _normalize_example(field_name, example)
@@ -882,9 +900,21 @@ def _prompt_learning_payload(profile: dict[str, object]) -> dict[str, object]:
                     "verified_value": example.get("verified_value"),
                     "value_changed": example.get("value_changed"),
                     "correction_reason": example.get("correction_reason"),
-                    "evidence_text": evidence.get("text") if isinstance(evidence, dict) else "",
-                    "context_before": evidence.get("context_before") if isinstance(evidence, dict) else "",
-                    "context_after": evidence.get("context_after") if isinstance(evidence, dict) else "",
+                    "evidence_text": (
+                        evidence.get("text")
+                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
+                        else ""
+                    ),
+                    "context_before": (
+                        evidence.get("context_before")
+                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
+                        else ""
+                    ),
+                    "context_after": (
+                        evidence.get("context_after")
+                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
+                        else ""
+                    ),
                 }
             )
         prompt_fields.append(

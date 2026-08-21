@@ -2,6 +2,7 @@ import json
 
 from app.config import settings
 from app.db import connect, init_db, utc_now
+from app.main import reject_observation_evidence_location, restore_observation_evidence_location
 from app.text_learning import (
     build_text_learning_profile,
     import_text_learning_payload,
@@ -136,6 +137,21 @@ def test_reviewed_field_becomes_few_shot_example_with_ocr_location(tmp_path, mon
     assert "context_before" in prompt
     assert '"bbox":' not in prompt
     assert '"line_ids":' not in prompt
+
+    rejected = reject_observation_evidence_location("obs-her2")
+    assert rejected["evidence_status"] == "REJECTED"
+    rejected_profile = build_text_learning_profile({"primary_her2"})
+    rejected_example = rejected_profile["fields"][0]["examples"][0]
+    assert rejected_example["evidence_rejected"] is True
+    assert rejected_example["evidence"]["text"] == ""
+    assert rejected_example["evidence"]["matched"] is False
+    assert evidence_text not in text_learning_prompt_section({"primary_her2"})
+
+    restored = restore_observation_evidence_location("obs-her2")
+    assert restored["evidence_status"] == "AUTO"
+    restored_example = build_text_learning_profile({"primary_her2"})["fields"][0]["examples"][0]
+    assert restored_example["evidence"]["text"] == evidence_text
+    assert restored_example["evidence"]["matched"] is True
 
 
 def test_v3_examples_survive_export_import_and_remain_idempotent(tmp_path, monkeypatch):

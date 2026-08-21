@@ -39,6 +39,9 @@ DOCUMENT_FIELD_EXCLUSIONS = {
 # so this one document-specific exception is intentionally narrow.
 DOCUMENT_FIELD_INCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"contact"},
+    # Follow-up dates are stored in the followup group, but treatment records
+    # are the preferred source and must therefore expose this field to the AI.
+    "TREATMENT": {"last_visit_date"},
 }
 
 # Human review may always override a yes/no default to UNKNOWN, even where the
@@ -183,6 +186,37 @@ def data_processing_preferences() -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _prompt_preferences() -> dict:
+    """Return extraction preferences without derived, read-only field names.
+
+    Derived projections are produced only after human verification.  Keeping
+    their names out of the extraction prompt prevents the model from trying to
+    emit them while retaining the surrounding clinical rules.
+    """
+    derived_keys = {
+        field["key"]
+        for field in questionnaire_catalog()
+        if field.get("capture") == "derived_readonly"
+    }
+
+    def strip(value):
+        if isinstance(value, dict):
+            return {
+                key: strip(item)
+                for key, item in value.items()
+                if key not in derived_keys
+            }
+        if isinstance(value, list):
+            return [
+                strip(item)
+                for item in value
+                if not (isinstance(item, str) and item in derived_keys)
+            ]
+        return value
+
+    return strip(data_processing_preferences())
+
+
 def source_priority(field_name: str, document_type: str | None) -> int:
     """Return the configured source rank for a questionnaire field.
 
@@ -247,7 +281,7 @@ def extraction_prompt(
     ]
     allowed = {field["key"] for field in catalog}
     rules = document_rules().get(document_type, [])
-    preferences = data_processing_preferences()
+    preferences = _prompt_preferences()
     learning = text_learning_prompt_section(allowed)
     prompt = (
         f"文档类型：{document_type}\n\n"

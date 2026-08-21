@@ -59,7 +59,7 @@ def test_patient_sort_gates_quick_import_and_loads_before_shutdown_early_return(
     shutdown = (ROOT / "app/static/shutdown.js").read_text(encoding="utf-8")
     patient_sort = shutdown.index('patientSortScript.src = "/patient_sort.js"')
     params = shutdown.index("const params = new URLSearchParams")
-    early_return = shutdown.index("if (!port || !token) return")
+    early_return = shutdown.index("if (!token) return")
     assert patient_sort < params < early_return
     assert "patientSortScript.onload = loadQuickImport" in shutdown
     assert "patientSortScript.onerror = loadQuickImport" in shutdown

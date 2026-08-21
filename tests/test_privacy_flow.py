@@ -4,6 +4,8 @@ import json
 
 from PIL import Image
 
+from app.knowledge import questionnaire_catalog
+
 
 def make_image(fmt: str = "PNG") -> bytes:
     output = io.BytesIO()
@@ -360,7 +362,7 @@ def test_all_patient_preview_and_excel_compatible_chinese_csv(client):
     )
 
     preview = client.get("/api/data-preview").json()
-    assert len(preview["columns"]) == 158
+    assert len(preview["columns"]) == len(questionnaire_catalog())
     assert preview["columns"][0]["label"] == "病案号（7位）"
     assert preview["columns"][-1]["label"] == "其他收集信息"
     assert preview["rows"][0]["values"]["record_number"] == "0123456"

@@ -73,6 +73,6 @@ def test_unified_editor_and_green_roi_layers_load_before_launcher_only_shutdown_
     assert 'editorScript.onload = loadRoiGreen' in shutdown
     assert 'data-bce-editor-interactions="1"' in shutdown
     assert 'data-bce-roi-green="1"' in shutdown
-    assert "if (!port || !token) return" in shutdown
-    assert shutdown.index('editorScript.src = "/editor_interactions.js"') < shutdown.index("if (!port || !token) return")
-    assert shutdown.index('greenScript.src = "/roi_green.js"') < shutdown.index("if (!port || !token) return")
+    assert "if (!token) return" in shutdown
+    assert shutdown.index('editorScript.src = "/editor_interactions.js"') < shutdown.index("if (!token) return")
+    assert shutdown.index('greenScript.src = "/roi_green.js"') < shutdown.index("if (!token) return")

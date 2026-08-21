@@ -5,11 +5,6 @@
 (() => {
   const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
 
-  function removeLegacyLearningUi() {
-    document.querySelector("#improve-learning")?.remove();
-    document.querySelector("#learning-summary-dialog")?.remove();
-  }
-
   function downloadJson(payload) {
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json;charset=utf-8"});
     const url = URL.createObjectURL(blob);
@@ -21,26 +16,6 @@
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  function ensureExportButton() {
-    let button = document.querySelector("#export-text-learning");
-    if (button) {
-      button.textContent = "导出学习JSON";
-      button.title = "导出字段填写方法、人工纠正样例和OCR文本定位证据";
-      return button;
-    }
-    const actions = document.querySelector(".patient-browser-actions");
-    if (!actions) return null;
-    button = document.createElement("button");
-    button.id = "export-text-learning";
-    button.type = "button";
-    button.className = "tool";
-    button.textContent = "导出学习JSON";
-    button.title = "导出字段填写方法、人工纠正样例和OCR文本定位证据";
-    const reference = document.querySelector("#scan-patient-packages");
-    actions.insertBefore(button, reference || null);
-    return button;
   }
 
   async function loadLearningStatus() {
@@ -61,41 +36,15 @@
     }
   }
 
-  function ensureControls() {
-    removeLegacyLearningUi();
-    const exportButton = ensureExportButton();
-    if (!exportButton) return;
+  function bindControls() {
+    const exportButton = document.querySelector("#export-text-learning");
+    const importButton = document.querySelector("#import-text-learning");
+    const input = document.querySelector("#import-text-learning-file");
+    const status = document.querySelector("#text-learning-status");
+    if (!exportButton || !importButton || !input || !status) return;
 
-    let importButton = document.querySelector("#import-text-learning");
-    let input = document.querySelector("#import-text-learning-file");
-    let status = document.querySelector("#text-learning-status");
-
-    if (!importButton) {
-      importButton = document.createElement("button");
-      importButton.id = "import-text-learning";
-      importButton.type = "button";
-      importButton.className = "tool";
-      importButton.textContent = "导入学习JSON";
-      importButton.title = "导入其他 BCE 导出的字段学习样例，并长期用于后续AI提取";
-      exportButton.insertAdjacentElement("afterend", importButton);
-    }
-
-    if (!input) {
-      input = document.createElement("input");
-      input.id = "import-text-learning-file";
-      input.type = "file";
-      input.accept = ".json,application/json";
-      input.hidden = true;
-      importButton.insertAdjacentElement("afterend", input);
-    }
-
-    if (!status) {
-      status = document.createElement("small");
-      status.id = "text-learning-status";
-      status.className = "text-learning-status";
-      status.textContent = "学习样例：读取中…";
-      input.insertAdjacentElement("afterend", status);
-    }
+    exportButton.title = "导出字段填写方法、人工纠正样例和 OCR 文本定位证据";
+    importButton.title = "导入其他 BCE 导出的字段学习样例，并长期用于后续 AI 提取";
 
     importButton.onclick = () => {
       input.value = "";
@@ -157,13 +106,8 @@
       }
     };
 
-    if (!status.dataset.loaded) {
-      status.dataset.loaded = "1";
-      loadLearningStatus().catch(() => {});
-    }
+    loadLearningStatus().catch(() => {});
   }
 
-  const observer = new MutationObserver(() => ensureControls());
-  observer.observe(document.body, {childList: true, subtree: true});
-  ensureControls();
+  bindControls();
 })();
