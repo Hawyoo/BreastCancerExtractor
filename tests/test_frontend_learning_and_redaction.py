@@ -10,10 +10,12 @@ def test_saved_redaction_uses_crop_relative_coordinates():
     assert "buildSanitizedBlob = () => new Promise" in script
 
 
-def test_improve_learning_summarizes_human_edits_and_manual_fills():
-    script = (ROOT / "app/static/derived_fields.js").read_text(encoding="utf-8")
-    assert 'button.textContent = "改进学习"' in script
-    assert '"USER_EDIT", "USER_EDIT_VERIFIED"' in script
-    assert '"人工手动补充"' in script
-    assert 'localStorage.setItem(LEARNING_STORAGE_KEY' in script
-    assert 'LEARNING_EXCLUDED_FIELDS = new Set(["record_number", "contact"])' in script
+def test_learning_ui_keeps_only_json_import_and_export_controls():
+    script = (ROOT / "app/static/text_learning_import.js").read_text(encoding="utf-8")
+    assert 'document.querySelector("#improve-learning")?.remove()' in script
+    assert 'document.querySelector("#learning-summary-dialog")?.remove()' in script
+    assert 'button.textContent = "导出学习JSON"' in script
+    assert 'importButton.textContent = "导入学习JSON"' in script
+    assert 'api("/api/text-learning")' in script
+    assert 'api("/api/text-learning/import"' in script
+    assert "20 * 1024 * 1024" in script
