@@ -5,6 +5,7 @@ import yaml
 
 from app.config import settings
 from app.derived_fields import expand_questionnaire_catalog
+from app.text_learning import text_learning_prompt_section
 
 DOCUMENT_GROUPS = {
     "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
@@ -247,6 +248,7 @@ def extraction_prompt(
     allowed = {field["key"] for field in catalog}
     rules = document_rules().get(document_type, [])
     preferences = data_processing_preferences()
+    learning = text_learning_prompt_section(allowed)
     prompt = (
         f"文档类型：{document_type}\n\n"
         "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段。"
@@ -262,6 +264,9 @@ def extraction_prompt(
         f"{yaml.safe_dump(rules, allow_unicode=True, sort_keys=False)}\n\n"
         "本队列的数据处理偏好如下。推断值必须标记source_mode=INFERRED；前提不满足时使用NOT_APPLICABLE：\n"
         f"{yaml.safe_dump(preferences, allow_unicode=True, sort_keys=False)}\n\n"
+        f"{learning + chr(10) + chr(10) if learning else ''}"
+        "证据定位要求：raw_text必须尽量逐字引用当前OCR中的最小充分证据，不要改写、概括或仅返回字段值；"
+        "这样系统才能把该字段自动定位回原图对应文字。若证据跨多行，可保留相邻原文并用换行连接。\n\n"
         f"OCR文字：\n{ocr_text}"
     )
     return prompt, allowed
