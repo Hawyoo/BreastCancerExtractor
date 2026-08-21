@@ -11,7 +11,14 @@ datas = [
     (str(root / "knowledge"), "knowledge"),
 ]
 binaries = []
-hiddenimports = ["app.main", "ocr.service", "tkinter", "tkinter.ttk"]
+hiddenimports = [
+    "app.main",
+    "app.server",
+    "app.text_learning_api",
+    "ocr.service",
+    "tkinter",
+    "tkinter.ttk",
+]
 
 
 def paddle_submodule_filter(name):
