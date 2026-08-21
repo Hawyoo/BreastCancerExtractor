@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections import Counter
 from typing import Iterable
 
@@ -8,7 +9,6 @@ from app.db import connect
 from app.derived_fields import is_derived_field
 
 LEARNING_EXCLUDED_FIELDS = {"record_number", "contact"}
-LEARNING_OPERATIONS = {"USER_EDIT", "USER_EDIT_VERIFIED"}
 
 
 def _clean(value: object) -> str:
@@ -19,6 +19,15 @@ def _field_is_learnable(field_name: str, allowed_fields: set[str] | None) -> boo
     if not field_name or field_name in LEARNING_EXCLUDED_FIELDS or is_derived_field(field_name):
         return False
     return allowed_fields is None or field_name in allowed_fields
+
+
+def _empty_profile() -> dict[str, object]:
+    return {
+        "version": 1,
+        "source": "local_human_corrections",
+        "field_count": 0,
+        "fields": [],
+    }
 
 
 def build_text_learning_profile(
@@ -48,22 +57,28 @@ def build_text_learning_profile(
             },
         )
 
-    with connect() as db:
-        audits = db.execute(
-            """SELECT field_name,old_value,new_value,reason,operation
-               FROM audit_log
-               WHERE field_name IS NOT NULL
-                 AND operation IN ('USER_EDIT','USER_EDIT_VERIFIED')
-               ORDER BY id DESC"""
-        ).fetchall()
-        manual_rows = db.execute(
-            """SELECT field_name,current_value
-               FROM observations
-               WHERE raw_text='人工手动补充'
-                 AND current_value IS NOT NULL
-                 AND TRIM(current_value)<>''
-               ORDER BY updated_at DESC"""
-        ).fetchall()
+    try:
+        with connect() as db:
+            audits = db.execute(
+                """SELECT field_name,old_value,new_value,reason,operation
+                   FROM audit_log
+                   WHERE field_name IS NOT NULL
+                     AND operation IN ('USER_EDIT','USER_EDIT_VERIFIED')
+                   ORDER BY id DESC"""
+            ).fetchall()
+            manual_rows = db.execute(
+                """SELECT field_name,current_value
+                   FROM observations
+                   WHERE raw_text='人工手动补充'
+                     AND current_value IS NOT NULL
+                     AND TRIM(current_value)<>''
+                   ORDER BY updated_at DESC"""
+            ).fetchall()
+    except (sqlite3.Error, OSError):
+        # extraction_prompt is also used by unit tests and startup probes before
+        # the runtime catalog exists. Lack of a learning catalog must never make
+        # normal extraction rules unavailable.
+        return _empty_profile()
 
     for row in audits:
         field_name = _clean(row["field_name"])
