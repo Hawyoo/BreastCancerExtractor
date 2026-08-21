@@ -5,18 +5,28 @@ import queue
 import threading
 import traceback
 from pathlib import Path
+from typing import Callable
 
 
 class PortableStartupWindow:
-    """Small Windows-only startup window for the frozen Portable executable.
+    """Small Windows-only startup and runtime control window.
 
     The UI runs on its own Tk message-loop thread so OCR / Ollama / Uvicorn
-    startup can remain synchronous in the launcher thread. Source-mode and
-    non-Windows runs can simply skip creating this window.
+    startup can remain synchronous in the launcher thread. After startup it
+    remains available as a small control panel for reopening the browser or
+    shutting down the whole Portable process tree.
     """
 
-    def __init__(self, log_path: Path) -> None:
+    def __init__(
+        self,
+        log_path: Path,
+        *,
+        on_reopen: Callable[[], bool] | None = None,
+        on_shutdown: Callable[[], None] | None = None,
+    ) -> None:
         self.log_path = Path(log_path)
+        self.on_reopen = on_reopen
+        self.on_shutdown = on_shutdown
         self._commands: queue.Queue[tuple[str, str | None]] = queue.Queue()
         self._started = threading.Event()
         self._closed = threading.Event()
@@ -42,6 +52,14 @@ class PortableStartupWindow:
     def update(self, message: str) -> None:
         if self.running:
             self._commands.put(("status", str(message)))
+
+    def ready(self, message: str = "✓ 系统已启动") -> None:
+        if self.running:
+            self._commands.put(("ready", str(message)))
+
+    def closing(self) -> None:
+        if self.running:
+            self._commands.put(("closing", None))
 
     def close(self) -> None:
         if self.running:
@@ -85,6 +103,54 @@ class PortableStartupWindow:
             note = tk.Label(container, textvariable=note_var, font=("Segoe UI", 9), anchor="w", justify="left", wraplength=390)
             note.pack(fill="x")
 
+            controls = ttk.Frame(container)
+            reopen_button = ttk.Button(controls, text="重新打开浏览器")
+            shutdown_button = ttk.Button(controls, text="关闭程序")
+            reopen_button.pack(side="left", padx=(0, 10))
+            shutdown_button.pack(side="left")
+
+            state = {"mode": "starting", "shutdown_requested": False}
+
+            def request_reopen() -> None:
+                if state["mode"] != "ready" or self.on_reopen is None:
+                    return
+                try:
+                    opened = self.on_reopen()
+                except Exception:
+                    opened = False
+                    traceback.print_exc()
+                if opened is False:
+                    note_var.set("无法自动打开浏览器，请检查 Windows 默认浏览器设置。")
+                else:
+                    note_var.set("")
+
+            def request_shutdown() -> None:
+                if state["mode"] == "failed":
+                    root.destroy()
+                    return
+                if state["shutdown_requested"]:
+                    return
+                state["shutdown_requested"] = True
+                state["mode"] = "closing"
+                progress.stop()
+                if progress.winfo_manager():
+                    progress.pack_forget()
+                if controls.winfo_manager():
+                    controls.pack_forget()
+                subtitle.config(text="正在关闭程序…")
+                status_var.set("正在停止后台服务，请稍候…")
+                note_var.set("")
+                root.lift()
+                try:
+                    if self.on_shutdown is not None:
+                        self.on_shutdown()
+                except Exception:
+                    traceback.print_exc()
+
+            reopen_button.configure(command=request_reopen)
+            shutdown_button.configure(command=request_shutdown)
+            root.protocol("WM_DELETE_WINDOW", request_shutdown)
+
             root.update_idletasks()
             width = 450
             height = max(190, root.winfo_reqheight())
@@ -97,28 +163,54 @@ class PortableStartupWindow:
             root.attributes("-topmost", True)
             root.after(900, lambda: root.attributes("-topmost", False))
 
-            allow_close = {"value": False}
+            def show_ready(message: str) -> None:
+                state["mode"] = "ready"
+                progress.stop()
+                if progress.winfo_manager():
+                    progress.pack_forget()
+                status_var.set("")
+                note_var.set("")
+                subtitle.config(text=message or "✓ 系统已启动")
+                if not controls.winfo_manager():
+                    controls.pack(fill="x", pady=(8, 0))
+                root.update_idletasks()
+                root.geometry(f"{width}x{max(155, root.winfo_reqheight())}+{x}+{y}")
 
-            def on_close() -> None:
-                if allow_close["value"]:
-                    root.destroy()
-
-            root.protocol("WM_DELETE_WINDOW", on_close)
+            def show_error(message: str) -> None:
+                state["mode"] = "failed"
+                progress.stop()
+                if progress.winfo_manager():
+                    progress.pack_forget()
+                if controls.winfo_manager():
+                    controls.pack_forget()
+                subtitle.config(text="启动失败")
+                status_var.set(message or "启动失败")
+                note_var.set(f"详细日志：{self.log_path}\n关闭此窗口退出。")
+                root.lift()
+                root.attributes("-topmost", True)
 
             def poll_commands() -> None:
                 try:
                     while True:
                         command, payload = self._commands.get_nowait()
-                        if command == "status":
+                        if command == "status" and state["mode"] == "starting":
                             status_var.set(payload or "正在启动…")
+                        elif command == "ready":
+                            show_ready(payload or "✓ 系统已启动")
+                        elif command == "closing":
+                            if not state["shutdown_requested"]:
+                                state["shutdown_requested"] = True
+                                state["mode"] = "closing"
+                                progress.stop()
+                                if progress.winfo_manager():
+                                    progress.pack_forget()
+                                if controls.winfo_manager():
+                                    controls.pack_forget()
+                                subtitle.config(text="正在关闭程序…")
+                                status_var.set("正在停止后台服务，请稍候…")
+                                note_var.set("")
                         elif command == "error":
-                            allow_close["value"] = True
-                            progress.stop()
-                            subtitle.config(text="启动失败")
-                            status_var.set(payload or "启动失败")
-                            note_var.set(f"详细日志：{self.log_path}\n关闭此窗口退出。")
-                            root.lift()
-                            root.attributes("-topmost", True)
+                            show_error(payload or "启动失败")
                         elif command == "close":
                             root.destroy()
                             return

@@ -1,5 +1,7 @@
+import threading
 from pathlib import Path
 
+from app import native_entry
 from app.native_entry import _is_service_invocation, _log_role
 
 
@@ -37,12 +39,48 @@ def test_portable_entry_reports_real_startup_stages_and_logs_output():
         assert message in source
 
 
-def test_startup_window_closes_on_browser_open_and_stays_for_startup_error():
-    source = (ROOT / "app" / "native_entry.py").read_text(encoding="utf-8")
-    assert "_startup_window.close()" in source
-    assert "_startup_window.fail(" in source
-    assert "_startup_window.wait_closed()" in source
-    assert "if portable_gui and _startup_window is not None and not _startup_complete" in source
+def test_startup_window_becomes_persistent_runtime_control_panel():
+    source = (ROOT / "app" / "startup_window.py").read_text(encoding="utf-8")
+    entry = (ROOT / "app" / "native_entry.py").read_text(encoding="utf-8")
+
+    assert "✓ 系统已启动" in source
+    assert 'text="重新打开浏览器"' in source
+    assert 'text="关闭程序"' in source
+    assert 'root.protocol("WM_DELETE_WINDOW", request_shutdown)' in source
+    assert "浏览器可以安全关闭" not in source
+    assert "on_reopen=_request_reopen_browser" in entry
+    assert "on_shutdown=_request_full_shutdown" in entry
+    assert '_startup_window.ready("✓ 系统已启动")' in entry
+    assert "_startup_window.close()" not in entry.split("def _open_browser_with_status", 1)[1].split("def _run_app_service", 1)[0]
+
+
+def test_runtime_control_reopens_the_saved_browser_url(monkeypatch):
+    opened = []
+    monkeypatch.setattr(native_entry, "_browser_url", "http://127.0.0.1:8765#token")
+    monkeypatch.setattr(native_entry, "_original_webbrowser_open", lambda url: opened.append(url) or True)
+
+    assert native_entry._request_reopen_browser()
+    assert opened == ["http://127.0.0.1:8765#token"]
+
+
+def test_runtime_control_close_button_and_window_x_use_launcher_shutdown(monkeypatch):
+    launcher_event = threading.Event()
+    requested = threading.Event()
+    closing_calls = []
+
+    class FakeWindow:
+        def closing(self):
+            closing_calls.append(True)
+
+    monkeypatch.setattr(native_entry, "_launcher_shutdown_event", launcher_event)
+    monkeypatch.setattr(native_entry, "_shutdown_requested", requested)
+    monkeypatch.setattr(native_entry, "_startup_window", FakeWindow())
+
+    native_entry._request_full_shutdown()
+
+    assert requested.is_set()
+    assert launcher_event.is_set()
+    assert closing_calls == [True]
 
 
 def test_startup_window_has_indeterminate_progress_and_first_run_hint():
