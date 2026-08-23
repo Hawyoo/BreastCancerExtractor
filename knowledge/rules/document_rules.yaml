@@ -11,8 +11,8 @@ document_rules:
 
   ADMISSION:
     - id: admission_scope
-      description: 入院记录重点抽取性别、职业、既往史、婚育史、月经史、家族史和乳腺癌偏侧性；相关字段必须以本页明确文字为依据。
-      preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 偏侧性]
+      description: 入院记录重点抽取性别、职业、既往史、婚育史、月经史、家族史、吸烟饮酒史和乳腺癌偏侧性；相关字段必须以本页明确文字为依据。
+      preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 吸烟史, 饮酒史, 偏侧性]
     - id: admission_sex_preferred_source
       field: sex
       description: 入院记录等叙述性页面是性别的允许来源；必须有明确性别文字才可抽取。

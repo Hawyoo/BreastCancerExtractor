@@ -354,11 +354,136 @@ def test_same_questionnaire_field_is_consolidated_before_human_review(client):
     assert "USER_RESOLVE_FIELD_CANDIDATES" in [item["operation"] for item in detail["audit_log"]]
 
 
+def test_conflict_review_can_verify_the_selected_candidate(client):
+    patient = create_patient(client)
+    requested = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "postoperative_endocrine", "value": "YES", "confidence": "HIGH"},
+    ).json()
+    selected = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "postoperative_endocrine", "value": "NO", "confidence": "HIGH"},
+    ).json()
+
+    verified = client.post(
+        f"/api/observations/{requested['id']}/verify",
+        json={"candidate_id": selected["id"], "value": "NO", "operator": "reviewer01"},
+    )
+    assert verified.status_code == 200
+    assert verified.json()["id"] == selected["id"]
+    assert verified.json()["requested_id"] == requested["id"]
+    assert requested["id"] in verified.json()["superseded_ids"]
+    observation = client.get(f"/api/patients/{patient['id']}").json()["observations"][0]
+    assert observation["id"] == selected["id"]
+    assert observation["current_value"] == "NO"
+    assert observation["status"] == "VERIFIED"
+
+
+def test_manual_review_location_ignores_ai_document_mapping_within_patient(client):
+    patient = create_patient(client)
+    first = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("first.png", make_image(), "image/png")},
+        data={"display_name": "病案首页", "document_type": "MEDICAL_RECORD_COVER",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+    second = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("second.png", make_image(), "image/png")},
+        data={"display_name": "MRI-第1页", "document_type": "MRI",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+    observation = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "contact", "value": "13800000000", "confidence": "HIGH",
+              "document_id": first["id"]},
+    ).json()
+
+    first_location = client.put(
+        f"/api/observations/{observation['id']}/evidence-location",
+        json={"document_id": first["id"], "x": 1, "y": 2, "width": 8, "height": 6,
+              "operator": "reviewer01"},
+    )
+    assert first_location.status_code == 200
+    old_region_id = first_location.json()["region"]["id"]
+    moved = client.put(
+        f"/api/observations/{observation['id']}/evidence-location",
+        json={"document_id": second["id"], "x": 3, "y": 4, "width": 10, "height": 7,
+              "operator": "reviewer01"},
+    )
+    assert moved.status_code == 200
+    assert moved.json()["document_id"] == second["id"]
+    assert moved.json()["region"]["id"] != old_region_id
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    stored = next(item for item in detail["observations"] if item["id"] == observation["id"])
+    assert stored["document_id"] == second["id"]
+    assert stored["region_id"] == moved.json()["region"]["id"]
+    assert old_region_id not in {region["id"] for doc in detail["documents"] for region in doc["regions"]}
+
+    other_patient = client.post("/api/patients", json={"patient_code": "7654321"}).json()
+    foreign = client.post(
+        f"/api/patients/{other_patient['id']}/documents",
+        files={"image": ("foreign.png", make_image(), "image/png")},
+        data={"display_name": "其他患者", "document_type": "ADMISSION",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+    rejected = client.put(
+        f"/api/observations/{observation['id']}/evidence-location",
+        json={"document_id": foreign["id"], "x": 1, "y": 1, "width": 5, "height": 5},
+    )
+    assert rejected.status_code == 409
+
+
+def test_verification_atomically_saves_the_unsaved_review_roi(client):
+    patient = create_patient(client)
+    document = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("admission.png", make_image(), "image/png")},
+        data={"display_name": "入院记录", "document_type": "ADMISSION",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+    observation = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "family_history_detail", "value": "母亲乳腺癌", "confidence": "HIGH",
+              "document_id": document["id"]},
+    ).json()
+
+    verified = client.post(
+        f"/api/observations/{observation['id']}/verify",
+        json={
+            "value": "母亲乳腺癌",
+            "operator": "reviewer01",
+            "evidence_location": {
+                "document_id": document["id"], "x": 2, "y": 3, "width": 9, "height": 6,
+                "operator": "reviewer01",
+            },
+        },
+    )
+    assert verified.status_code == 200
+    result = verified.json()
+    assert result["status"] == "VERIFIED"
+    assert result["region"]["region_type"] == "FIELD_REVIEW_EVIDENCE"
+    assert result["region_id"] == result["region"]["id"]
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    stored = next(item for item in detail["observations"] if item["id"] == observation["id"])
+    assert stored["status"] == "VERIFIED"
+    assert stored["region_id"] == result["region_id"]
+    operations = [item["operation"] for item in detail["audit_log"]]
+    assert "USER_SET_EVIDENCE_LOCATION" in operations
+    assert "USER_VERIFY" in operations
+
+
 def test_all_patient_preview_and_excel_compatible_chinese_csv(client):
     patient = client.post("/api/patients", json={"patient_code": "0123456"}).json()
     client.post(
         f"/api/patients/{patient['id']}/observations",
         json={"field_name": "sex", "value": "FEMALE", "confidence": "HIGH"},
+    )
+    client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "contact", "value": "13800000000", "confidence": "HIGH"},
     )
 
     preview = client.get("/api/data-preview").json()
@@ -366,8 +491,18 @@ def test_all_patient_preview_and_excel_compatible_chinese_csv(client):
     assert preview["columns"][0]["label"] == "病案号（7位）"
     assert preview["columns"][-1]["label"] == "其他收集信息"
     assert preview["rows"][0]["values"]["record_number"] == "0123456"
+    assert preview["rows"][0]["values"]["contact"] == "13800000000"
+    assert preview["rows"][0]["statuses"]["contact"] == "AI_PROCESSED"
     assert preview["rows"][0]["values"]["sex"] == "女"
     assert preview["rows"][0]["statuses"]["sex"] == "AI_PROCESSED"
+    assert preview["review_metrics"] == {
+        "total_fields": 2,
+        "verified_fields": 0,
+        "pending_fields": 2,
+        "conflict_fields": 0,
+        "manually_modified_fields": 0,
+        "verification_rate": 0.0,
+    }
 
     verified = client.get("/api/data-preview?verified_only=true").json()
     assert verified["rows"][0]["values"]["sex"] == ""

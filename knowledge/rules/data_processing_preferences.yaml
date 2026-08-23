@@ -38,7 +38,7 @@ page_scope:
   MEDICAL_RECORD_COVER:
     preferred_topics: [病案号, 出生日期, 电话]
   ADMISSION:
-    preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 偏侧性]
+    preferred_topics: [性别, 职业, 既往史, 婚育史, 月经史, 家族史, 吸烟史, 饮酒史, 偏侧性]
   SURGERY:
     preferred_topics: [偏侧性, 手术时间, 全切或保乳, 是否重建, 重建方式]
   DISCHARGE:

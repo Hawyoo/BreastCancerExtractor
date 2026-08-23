@@ -235,9 +235,7 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
     try:
-        refresh_derived_observations(connection)
         yield connection
-        refresh_derived_observations(connection)
         connection.commit()
     except Exception:
         connection.rollback()

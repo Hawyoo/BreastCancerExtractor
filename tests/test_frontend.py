@@ -28,9 +28,9 @@ def test_roi_types_are_document_specific_and_resizable():
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert "roiTypesByDocument" in javascript
     assert 'MEDICAL_RECORD_COVER: [["cover_identity","病案号与出生日期"]' in javascript
-    assert 'ADMISSION: [["admission_identity","病案号、性别与职业"]' in javascript
+    assert 'ADMISSION: [["admission_identity","性别与职业"]' in javascript
     assert '["imaging_date_phase","检查日期与治疗阶段"]' in javascript
-    assert '["ihc_panel","ER/PR/HER2/Ki-67面板"]' in javascript
+    assert 'IHC:"免疫组化"' not in javascript
     assert "state.roiResize" in javascript
     assert "resizeRoi" in javascript
 
@@ -228,8 +228,61 @@ def test_initial_patient_selection_is_main_view_and_review_can_advance_continuou
     assert 'id="previous-field"' in html and 'id="next-field"' in html
     assert 'id="review-position"' in html
     assert "navigateObservation(-1)" in javascript and "navigateObservation(1)" in javascript
-    assert "nextUnverifiedObservation(confirmedId)" in javascript
+    assert "nextUnverifiedObservation(result.id)" in javascript
     assert "已进入下一条待审核记录" in javascript
+
+
+def test_review_confirmation_updates_locally_and_reuses_the_same_document_image():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    verify_handler = javascript[
+        javascript.index('$("#verify-field").onclick') : javascript.index("async function showPatientReview")
+    ]
+    assert "applyObservationReviewResult(result)" in verify_handler
+    assert "evidence_location" in verify_handler
+    assert "state.reviewLocationDirty?state.rois[0]:null" in verify_handler
+    assert 'method:"PATCH"' not in verify_handler
+    assert verify_handler.index("nextUnverifiedObservation(result.id)") < verify_handler.index(
+        "refreshCurrentPatient(state.patient.id)"
+    )
+    assert "state.editingDocumentId===doc.id&&state.sourceImage" in javascript
+    assert "schedulePatientListRefresh()" in javascript
+
+
+def test_review_uses_an_independent_single_field_location_toolbar():
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert 'id="review-evidence-workspace"' in html
+    assert 'id="review-document-select"' in html
+    assert 'id="review-draw-location"' in html
+    assert 'id="review-save-location"' in html
+    assert '$(".editor-toolbar").hidden=active' in javascript
+    assert '$(".import-options").hidden=active' in javascript
+    assert "selector.innerHTML=(state.patient?.documents||[]).map" in javascript
+    assert "state.rois=[roi]" in javascript
+    assert 'type:"FIELD_REVIEW_EVIDENCE"' in javascript
+    assert '$("#review-evidence-workspace").scrollIntoView' in javascript
+
+
+def test_conflict_image_selects_its_candidate_value_and_source_page():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    conflict_handler = javascript[
+        javascript.index("function renderConflictEvidence") : javascript.index("async function chooseObservation")
+    ]
+    assert "state.reviewCandidateObservationId=candidate.id" in conflict_handler
+    assert '$("#review-current-value").value=candidate.value??""' in conflict_handler
+    assert "openSavedDocumentPreview(candidate.document_id,observation.id)" in conflict_handler
+    assert "candidate.raw_text" in conflict_handler
+    assert "candidate.confidence" in conflict_handler
+
+
+def test_review_preloads_adjacent_documents_with_a_bounded_cache():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert "const DOCUMENT_IMAGE_CACHE_LIMIT = 8" in javascript
+    assert "function loadCachedDocumentImage(doc)" in javascript
+    assert "function preloadAdjacentReviewDocuments(documentId)" in javascript
+    assert "[index-1,index+1]" in javascript
+    assert "image=await loadCachedDocumentImage(doc)" in javascript
+    assert "documentImageCache.clear()" in javascript
 
 
 def test_verified_fields_remain_editable_and_can_be_confirmed_again():
@@ -239,19 +292,32 @@ def test_verified_fields_remain_editable_and_can_be_confirmed_again():
     assert 'verified?"再次确认":"人工确认"' in javascript
 
 
-def test_review_fields_are_grouped_by_review_status_and_questionnaire_order():
+def test_review_navigation_groups_by_source_without_changing_display_field_order():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert 'id="review-field-key"' in html
+    assert "function fieldOrderedObservations()" in javascript
     assert "function orderedObservations()" in javascript
+    assert "const documentOrder=new Map" in javascript
     assert 'left.status==="VERIFIED"' in javascript
     assert "left.field_order" in javascript
     assert 'reviewGroup==="VERIFIED"?"已人工审核":"待人工审核"' in javascript
-    assert "const observations=orderedObservations()" in javascript
+    assert 'const observations=fieldOrderedObservations();$("#observation-count")' in javascript
     assert 'observation.field_label||observation.field_name' in javascript
     assert 'class="observation-field-key">字段名：' in javascript
     assert "observation.candidate_values" in javascript
     assert "已合并 ${obs.candidate_count} 条候选" in javascript
+
+
+def test_review_shortcuts_are_deliberate_and_do_not_use_arrow_keys():
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert "Ctrl+Enter 确认" in html
+    assert 'event.key==="Enter"' in javascript
+    assert 'event.key.toLowerCase()==="s"' in javascript
+    assert "data-candidate-index" in javascript
+    assert 'event.key==="ArrowLeft"' not in javascript
+    assert 'event.key==="ArrowRight"' not in javascript
 
 
 def test_homepage_has_all_patient_data_preview_and_csv_export():
@@ -262,9 +328,11 @@ def test_homepage_has_all_patient_data_preview_and_csv_export():
     assert 'id="data-preview-view"' in html
     assert 'id="data-preview-table"' in html
     assert 'id="data-preview-scope"' in html
+    assert 'id="review-quality-metrics"' in html
     assert 'id="export-data-csv"' in html
     assert "导出CSV（Excel兼容）" not in html
     assert "function renderDataPreview()" in javascript
+    assert "manually_modified_fields" in javascript
     assert "function loadDataPreview()" in javascript
     assert "/api/data-preview.csv?verified_only=" in javascript
     assert "position: sticky" in styles

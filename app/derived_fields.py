@@ -186,7 +186,12 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def refresh_derived_observations(connection: sqlite3.Connection) -> int:
+def refresh_derived_observations(
+    connection: sqlite3.Connection,
+    *,
+    patient_id: int | None = None,
+    source_field: str | None = None,
+) -> int:
     """Materialize read-only projections from uniquely verified source fields.
 
     Derived observations are persisted so they travel inside patient.sqlite and
@@ -195,13 +200,16 @@ def refresh_derived_observations(connection: sqlite3.Connection) -> int:
     verified masters conflict, the projection is removed.
     """
     connection.row_factory = sqlite3.Row
-    source_fields = tuple(TNM_SOURCE_FIELDS) + tuple(MEASUREMENT_SOURCE_FIELDS)
+    all_source_fields = tuple(TNM_SOURCE_FIELDS) + tuple(MEASUREMENT_SOURCE_FIELDS)
+    source_fields = (source_field,) if source_field in all_source_fields else all_source_fields
     placeholders = ",".join("?" for _ in source_fields)
+    patient_filter = " AND patient_id=?" if patient_id is not None else ""
+    source_params: tuple[object, ...] = (*source_fields, patient_id) if patient_id is not None else source_fields
     rows = connection.execute(
         f"""SELECT * FROM observations
-            WHERE field_name IN ({placeholders}) AND status='VERIFIED'
+            WHERE field_name IN ({placeholders}) AND status='VERIFIED'{patient_filter}
             ORDER BY patient_id,field_name,updated_at DESC""",
-        source_fields,
+        source_params,
     ).fetchall()
 
     grouped: dict[tuple[int, str], list[sqlite3.Row]] = {}
@@ -224,15 +232,22 @@ def refresh_derived_observations(connection: sqlite3.Connection) -> int:
                 "source_field": source_field,
             }
 
-    target_fields = DERIVED_FIELD_NAMES
+    target_fields = tuple(
+        TNM_SOURCE_FIELDS.get(field_name, ())
+        or tuple(f"{field_name}_dim{index}_mm" for index in (1, 2, 3))
+        for field_name in source_fields
+    )
+    target_fields = tuple(field_name for group in target_fields for field_name in group)
     target_placeholders = ",".join("?" for _ in target_fields)
+    target_patient_filter = " AND patient_id=?" if patient_id is not None else ""
+    target_params: tuple[object, ...] = (*target_fields, patient_id) if patient_id is not None else target_fields
 
     # Synthetic fields are system-owned. Remove any manually/AI-created row
     # using these names so only DERIVED projections can exist.
     unauthorized = connection.execute(
         f"""SELECT id FROM observations
-            WHERE field_name IN ({target_placeholders}) AND source_mode!='DERIVED'""",
-        target_fields,
+            WHERE field_name IN ({target_placeholders}) AND source_mode!='DERIVED'{target_patient_filter}""",
+        target_params,
     ).fetchall()
     changed = 0
     for row in unauthorized:
@@ -241,8 +256,8 @@ def refresh_derived_observations(connection: sqlite3.Connection) -> int:
 
     existing_rows = connection.execute(
         f"""SELECT * FROM observations
-            WHERE field_name IN ({target_placeholders}) AND source_mode='DERIVED'""",
-        target_fields,
+            WHERE field_name IN ({target_placeholders}) AND source_mode='DERIVED'{target_patient_filter}""",
+        target_params,
     ).fetchall()
     existing: dict[tuple[int, str], list[sqlite3.Row]] = {}
     for row in existing_rows:

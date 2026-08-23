@@ -110,7 +110,19 @@ class ObservationEdit(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ObservationEvidenceLocation(BaseModel):
+    document_id: str = Field(min_length=1, max_length=80)
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    operator: str = Field(default="local-user", min_length=1, max_length=80)
+
+
 class ObservationVerify(BaseModel):
+    value: str | None = None
+    candidate_id: str | None = Field(default=None, max_length=80)
+    evidence_location: ObservationEvidenceLocation | None = None
     operator: str = Field(default="local-user", min_length=1, max_length=80)
     note: str | None = Field(default=None, max_length=500)
 

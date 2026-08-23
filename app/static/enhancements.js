@@ -468,7 +468,7 @@
         const imageButton = document.createElement("button"); imageButton.type = "button"; imageButton.className = "tool"; imageButton.textContent = "查看来源图";
         imageButton.onclick = () => openSavedDocumentPreview(observation.document_id, observation.id).catch(error => toast(error.message)); actions.appendChild(imageButton);
       }
-      if (column.key !== "record_number" && column.key !== "contact") {
+      if (column.key !== "record_number") {
         const editButton = document.createElement("button"); editButton.type = "button"; editButton.className = "tool"; editButton.textContent = value === "" ? "手动填写" : "补充记录";
         editButton.onclick = () => {
           $("#manual-field-name").value = column.key; $("#manual-field-value").value = value;
@@ -480,7 +480,7 @@
       body.appendChild(tr);
     }
     const select = $("#manual-field-name");
-    select.innerHTML = dataset.columns.filter(column => !["record_number", "contact"].includes(column.key))
+    select.innerHTML = dataset.columns.filter(column => column.key !== "record_number")
       .map(column => `<option value="${escapeHtml(column.key)}">${escapeHtml(column.label)} (${escapeHtml(column.key)})</option>`).join("");
     if (!reviewDialog.open) reviewDialog.show();
   }

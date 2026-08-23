@@ -16,12 +16,20 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import connect, init_db, rows_as_dicts, utc_now
-from app.knowledge import extraction_prompt, questionnaire_catalog, questionnaire_field_index, source_priority
+from app.derived_fields import MEASUREMENT_SOURCE_FIELDS, TNM_SOURCE_FIELDS, refresh_derived_observations
+from app.knowledge import (
+    document_roi_catalog,
+    extraction_prompt,
+    questionnaire_catalog,
+    questionnaire_field_index,
+    source_priority,
+)
 from app.models import (
     DocumentTypeUpdate,
     ModelImportRequest,
     ObservationCreate,
     ObservationEdit,
+    ObservationEvidenceLocation,
     ObservationVerify,
     OllamaModelUpdate,
     OllamaProviderUpdate,
@@ -266,10 +274,12 @@ def consolidate_patient_observations(observations: list[dict], documents: list[d
             {
                 "id": item["id"],
                 "document_id": item.get("document_id"),
+                "region_id": item.get("region_id"),
                 "value": item["current_value"],
                 "source": document_names.get(item.get("document_id"), "未知来源"),
                 "document_type": document_types.get(item.get("document_id")),
                 "raw_text": item.get("raw_text"),
+                "confidence": item.get("confidence"),
                 "valid": observation_value_is_valid(item["field_name"], item["current_value"]),
                 "selected": item["id"] == winner["id"],
             }
@@ -349,11 +359,35 @@ def build_data_preview(*, verified_only: bool = False) -> dict[str, object]:
     with connect() as db:
         patients = rows_as_dicts(db.execute("SELECT id,patient_code FROM patients ORDER BY patient_code").fetchall())
     rows = []
+    review_metrics = {
+        "total_fields": 0,
+        "verified_fields": 0,
+        "pending_fields": 0,
+        "conflict_fields": 0,
+        "manually_modified_fields": 0,
+    }
+    manually_modified: set[tuple[int, str]] = set()
     for patient in patients:
         detail = get_patient(patient["id"])
+        current_observations = detail["observations"]
+        review_metrics["total_fields"] += len(current_observations)
+        review_metrics["verified_fields"] += sum(
+            item["status"] == "VERIFIED" for item in current_observations
+        )
+        review_metrics["pending_fields"] += sum(
+            item["status"] != "VERIFIED" for item in current_observations
+        )
+        review_metrics["conflict_fields"] += sum(
+            bool(item.get("candidate_conflict")) for item in current_observations
+        )
+        manually_modified.update(
+            (int(patient["id"]), str(item["field_name"]))
+            for item in detail["audit_log"]
+            if item.get("field_name") and item["operation"] in {"USER_EDIT", "USER_EDIT_VERIFIED", "USER_CREATE"}
+        )
         observations = {
             item["field_name"]: item
-            for item in detail["observations"]
+            for item in current_observations
             if not verified_only or item["status"] == "VERIFIED"
         }
         values: dict[str, object] = {}
@@ -363,9 +397,6 @@ def build_data_preview(*, verified_only: bool = False) -> dict[str, object]:
             if key == "record_number":
                 values[key] = patient["patient_code"]
                 statuses[key] = "VERIFIED"
-            elif key == "contact":
-                values[key] = ""
-                statuses[key] = "UNAVAILABLE"
             elif field.get("depends_on"):
                 dependency = field["depends_on"]
                 prerequisite = observations.get(dependency["field"])
@@ -386,6 +417,10 @@ def build_data_preview(*, verified_only: bool = False) -> dict[str, object]:
                 statuses[key] = "EMPTY"
         rows.append({"patient_id": patient["id"], "patient_code": patient["patient_code"],
                      "values": values, "statuses": statuses})
+    review_metrics["manually_modified_fields"] = len(manually_modified)
+    review_metrics["verification_rate"] = round(
+        100 * review_metrics["verified_fields"] / review_metrics["total_fields"], 1
+    ) if review_metrics["total_fields"] else 0.0
     return {
         "columns": [
             {"key": field["key"], "label": field["label"], "group": field.get("group", "other"), "order": index}
@@ -393,6 +428,7 @@ def build_data_preview(*, verified_only: bool = False) -> dict[str, object]:
         ],
         "rows": rows,
         "verified_only": verified_only,
+        "review_metrics": review_metrics,
     }
 from app.storage import (
     replace_sanitized_image,
@@ -1179,6 +1215,56 @@ def get_observation(observation_id: str) -> dict[str, object]:
     return dict(row)
 
 
+def save_evidence_location_in_transaction(
+    db, observation: dict[str, object], payload: ObservationEvidenceLocation, now: str, *, operator: str
+) -> dict[str, object]:
+    document = db.execute("SELECT * FROM documents WHERE id=?", (payload.document_id,)).fetchone()
+    if not document or document["patient_id"] != observation["patient_id"]:
+        raise HTTPException(status_code=409, detail="Document does not belong to this patient")
+    old_region_id = observation.get("region_id")
+    if old_region_id:
+        old_region = db.execute("SELECT region_type FROM regions WHERE id=?", (old_region_id,)).fetchone()
+        if old_region and old_region["region_type"] == "FIELD_REVIEW_EVIDENCE":
+            db.execute("DELETE FROM regions WHERE id=?", (old_region_id,))
+    region_id = uuid.uuid4().hex
+    label = f"字段定位：{observation['field_name']}"
+    db.execute(
+        "INSERT INTO regions VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            region_id, payload.document_id, "FIELD_REVIEW_EVIDENCE", label,
+            payload.x, payload.y, payload.width, payload.height, now,
+        ),
+    )
+    db.execute(
+        """UPDATE observations SET document_id=?,region_id=?,evidence_status='MANUAL',updated_at=?
+           WHERE id=?""",
+        (payload.document_id, region_id, now, observation["id"]),
+    )
+    db.execute(
+        """INSERT INTO audit_log
+           (patient_id,document_id,field_name,operation,old_value,new_value,operator,reason,timestamp)
+           VALUES(?,?,?,?,?,?,?,?,?)""",
+        (
+            observation["patient_id"], payload.document_id, observation["field_name"],
+            "USER_SET_EVIDENCE_LOCATION", old_region_id, region_id, operator,
+            "人工复核框选当前字段定位", now,
+        ),
+    )
+    observation["document_id"] = payload.document_id
+    observation["region_id"] = region_id
+    observation["evidence_status"] = "MANUAL"
+    return {
+        "id": region_id,
+        "document_id": payload.document_id,
+        "region_type": "FIELD_REVIEW_EVIDENCE",
+        "label": label,
+        "x": payload.x,
+        "y": payload.y,
+        "width": payload.width,
+        "height": payload.height,
+    }
+
+
 @app.patch("/api/observations/{observation_id}")
 def edit_observation(observation_id: str, payload: ObservationEdit) -> dict[str, object]:
     observation = get_observation(observation_id)
@@ -1214,18 +1300,66 @@ def edit_observation(observation_id: str, payload: ObservationEdit) -> dict[str,
                 "UPDATE patients SET status=?,updated_at=? WHERE id=?",
                 ("VERIFIED" if remaining == 0 else "REVIEW_REQUIRED", now, observation["patient_id"]),
             )
+        if was_verified and observation["field_name"] in (*TNM_SOURCE_FIELDS, *MEASUREMENT_SOURCE_FIELDS):
+            refresh_derived_observations(
+                db,
+                patient_id=int(observation["patient_id"]),
+                source_field=str(observation["field_name"]),
+            )
     return {"id": observation_id, "value": normalized_value, "status": next_status}
 
 
 @app.post("/api/observations/{observation_id}/verify")
-def verify_observation(observation_id: str, payload: ObservationVerify) -> dict[str, str]:
-    observation = get_observation(observation_id)
+def verify_observation(observation_id: str, payload: ObservationVerify) -> dict[str, object]:
     now = utc_now()
     with connect() as db:
+        row = db.execute("SELECT * FROM observations WHERE id=?", (observation_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Observation not found")
+        requested_observation = dict(row)
+        observation = requested_observation
+        if payload.candidate_id and payload.candidate_id != observation_id:
+            candidate = db.execute("SELECT * FROM observations WHERE id=?", (payload.candidate_id,)).fetchone()
+            if not candidate:
+                raise HTTPException(status_code=404, detail="Candidate observation not found")
+            candidate_observation = dict(candidate)
+            if (
+                candidate_observation["patient_id"] != requested_observation["patient_id"]
+                or candidate_observation["field_name"] != requested_observation["field_name"]
+                or candidate_observation["status"] == "SUPERSEDED"
+            ):
+                raise HTTPException(status_code=409, detail="Candidate does not belong to this review field")
+            observation = candidate_observation
+        target_observation_id = str(observation["id"])
+        normalized_value = (
+            normalize_observation_value(str(observation["field_name"]), payload.value)
+            if payload.value is not None
+            else observation["current_value"]
+        )
+        if normalized_value != observation["current_value"]:
+            db.execute(
+                "UPDATE observations SET current_value=?,updated_at=? WHERE id=?",
+                (normalized_value, now, target_observation_id),
+            )
+            db.execute(
+                """INSERT INTO audit_log
+                   (patient_id,document_id,field_name,operation,old_value,new_value,operator,reason,timestamp)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (observation["patient_id"], observation["document_id"], observation["field_name"],
+                 "USER_EDIT_VERIFIED" if observation["status"] == "VERIFIED" else "USER_EDIT",
+                 observation["current_value"], normalized_value, payload.operator,
+                 payload.note or "人工复核修正", now),
+            )
+        observation["current_value"] = normalized_value
+        saved_region = None
+        if payload.evidence_location:
+            saved_region = save_evidence_location_in_transaction(
+                db, observation, payload.evidence_location, now, operator=payload.operator
+            )
         sibling_rows = db.execute(
             """SELECT id,current_value FROM observations
                WHERE patient_id=? AND field_name=? AND id!=? AND status!='SUPERSEDED'""",
-            (observation["patient_id"], observation["field_name"], observation_id),
+            (observation["patient_id"], observation["field_name"], target_observation_id),
         ).fetchall()
         if sibling_rows:
             sibling_ids = [row["id"] for row in sibling_rows]
@@ -1245,7 +1379,7 @@ def verify_observation(observation_id: str, payload: ObservationVerify) -> dict[
             )
         db.execute(
             "UPDATE observations SET status='VERIFIED',confidence='VERIFIED',updated_at=? WHERE id=?",
-            (now, observation_id),
+            (now, target_observation_id),
         )
         db.execute(
             """INSERT INTO audit_log
@@ -1259,12 +1393,71 @@ def verify_observation(observation_id: str, payload: ObservationVerify) -> dict[
             "SELECT COUNT(*) FROM observations WHERE patient_id=? AND status NOT IN ('VERIFIED','SUPERSEDED')",
             (observation["patient_id"],),
         ).fetchone()[0]
-        if remaining == 0:
-            db.execute(
-                "UPDATE patients SET status='VERIFIED',updated_at=? WHERE id=?",
-                (now, observation["patient_id"]),
+        patient_status = "VERIFIED" if remaining == 0 else "REVIEW_REQUIRED"
+        db.execute(
+            "UPDATE patients SET status=?,updated_at=? WHERE id=?",
+            (patient_status, now, observation["patient_id"]),
+        )
+        if observation["field_name"] in (*TNM_SOURCE_FIELDS, *MEASUREMENT_SOURCE_FIELDS):
+            refresh_derived_observations(
+                db,
+                patient_id=int(observation["patient_id"]),
+                source_field=str(observation["field_name"]),
             )
-    return {"id": observation_id, "status": "VERIFIED", "confidence": "VERIFIED"}
+    return {
+        "id": target_observation_id,
+        "requested_id": observation_id,
+        "field_name": observation["field_name"],
+        "document_id": observation["document_id"],
+        "value": normalized_value,
+        "status": "VERIFIED",
+        "confidence": "VERIFIED",
+        "patient_status": patient_status,
+        "superseded_ids": [row["id"] for row in sibling_rows],
+        "region": saved_region,
+        "region_id": observation.get("region_id"),
+        "evidence_status": observation.get("evidence_status"),
+    }
+
+
+@app.get("/api/knowledge/document-types")
+def get_document_types() -> dict[str, object]:
+    return {
+        "documents": [
+            {
+                "key": key,
+                "label": definition.get("label", key),
+                "regions": [
+                    {"key": region["key"], "label": region.get("label", region["key"])}
+                    for region in definition.get("regions", [])
+                ],
+            }
+            for key, definition in document_roi_catalog().items()
+        ]
+    }
+
+
+@app.put("/api/observations/{observation_id}/evidence-location")
+def save_observation_evidence_location(
+    observation_id: str, payload: ObservationEvidenceLocation
+) -> dict[str, object]:
+    now = utc_now()
+    with connect() as db:
+        observation = db.execute("SELECT * FROM observations WHERE id=?", (observation_id,)).fetchone()
+        if not observation:
+            raise HTTPException(status_code=404, detail="Observation not found")
+        observation_dict = dict(observation)
+        region = save_evidence_location_in_transaction(
+            db, observation_dict, payload, now, operator=payload.operator
+        )
+    return {
+        "id": observation_id,
+        "document_id": payload.document_id,
+        "region": {
+            **region,
+        },
+        "evidence_status": "MANUAL",
+    }
 
 
 @app.delete("/api/observations/{observation_id}/evidence-location")

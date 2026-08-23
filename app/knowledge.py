@@ -1,5 +1,6 @@
 from functools import lru_cache
 from itertools import combinations
+import re
 
 import yaml
 
@@ -7,38 +8,11 @@ from app.config import settings
 from app.derived_fields import expand_questionnaire_catalog
 from app.text_learning import text_learning_prompt_section
 
-DOCUMENT_GROUPS = {
-    "MEDICAL_RECORD_COVER": {"demographics", "diagnosis", "staging"},
-    "ADMISSION": {
-        "demographics",
-        "reproductive_history",
-        "medical_history",
-        "family_history",
-        "lifestyle",
-        "diagnosis",
-        "staging",
-    },
-    "DISCHARGE": {"diagnosis", "staging", "surgery", "neoadjuvant", "adjuvant_treatment"},
-    "ULTRASOUND": {"pretreatment_ultrasound", "post_neoadjuvant_imaging"},
-    "MAMMOGRAPHY": {"pretreatment_mammography"},
-    "MRI": {"pretreatment_mri", "post_neoadjuvant_imaging"},
-    "BIOPSY_PATHOLOGY": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "biomarkers", "diagnosis", "staging"},
-    "SURGICAL_PATHOLOGY": {"surgical_pathology", "biomarkers", "diagnosis", "staging", "treatment_response"},
-    "IHC": {"primary_biopsy", "node_biopsy", "metastasis_biopsy", "surgical_pathology", "biomarkers"},
-    # 手术记录只描述操作和术中所见，不能作为术后组织学、淋巴结病理或 p/ypTNM 的来源。
-    "SURGERY": {"surgery"},
-    "TREATMENT": {"neoadjuvant", "adjuvant_treatment", "palliative_treatment", "treatment_response"},
-}
-
 DOCUMENT_FIELD_EXCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"sex"},
 }
 
-# Direct identifiers remain manual_restricted by default. The cohort explicitly
-# requires the contact number to be extracted from the medical-record cover,
-# so this one document-specific exception is intentionally narrow.
 DOCUMENT_FIELD_INCLUSIONS = {
-    "MEDICAL_RECORD_COVER": {"contact"},
     # Follow-up dates are stored in the followup group, but treatment records
     # are the preferred source and must therefore expose this field to the AI.
     "TREATMENT": {"last_visit_date"},
@@ -61,6 +35,9 @@ PATIENT_LEVEL_BOOLEAN_POLICY = {
     "human_overrides": ["YES", "NO", "UNKNOWN"],
     "document_level_rule": "单张病历未提及是否型字段时不要由AI输出NO或UNKNOWN；患者级汇总时再统一默认NO。",
 }
+
+ADMISSION_FOCUS_MARKERS = ("个人史", "家族史", "婚育史", "月经史", "既往史")
+ADMISSION_FOCUS_TERMS = ("吸烟", "饮酒", "烟酒")
 
 # Runtime wording can be clearer than the source form while keeping stable keys.
 # These labels are used by review/data-preview/export without changing patient data.
@@ -90,6 +67,26 @@ def questionnaire_catalog() -> list[dict]:
         {**field, **QUESTIONNAIRE_FIELD_OVERRIDES.get(field["key"], {})}
         for field in fields
     ]
+
+
+@lru_cache
+def document_roi_catalog() -> dict[str, dict]:
+    """Single source of truth for document types, ROI choices and AI target fields."""
+    path = settings.knowledge_path / "schema" / "document_roi_mapping.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return payload.get("documents", {})
+
+
+def document_target_fields(document_type: str) -> set[str]:
+    # Legacy standalone IHC records are treated as biopsy pathology. New data
+    # no longer exposes IHC as a separate document type.
+    canonical_type = "BIOPSY_PATHOLOGY" if document_type == "IHC" else document_type
+    definition = document_roi_catalog().get(canonical_type) or document_roi_catalog().get("OTHER", {})
+    return {
+        str(field_name)
+        for region in definition.get("regions", [])
+        for field_name in region.get("target_fields", [])
+    }
 
 
 @lru_cache
@@ -134,6 +131,32 @@ def _allowed_values_for_field(field: dict) -> object:
             for selection in combinations(ordered, size)
         ]
     return values
+
+
+def admission_focus_sections(ocr_text: str) -> str:
+    """Surface high-value admission sections without adding another model call."""
+    text = str(ocr_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text:
+        return ""
+    marker_positions = sorted(
+        (match.start(), marker)
+        for marker in ADMISSION_FOCUS_MARKERS
+        for match in re.finditer(re.escape(marker), text)
+    )
+    snippets: list[str] = []
+    for index, (start, _marker) in enumerate(marker_positions):
+        next_start = marker_positions[index + 1][0] if index + 1 < len(marker_positions) else len(text)
+        snippets.append(text[start:min(next_start, start + 700)].strip())
+    for term in ADMISSION_FOCUS_TERMS:
+        for match in re.finditer(term, text):
+            start = max(0, match.start() - 160)
+            snippets.append(text[start:min(len(text), match.end() + 220)].strip())
+    unique: list[str] = []
+    for snippet in snippets:
+        compact = " ".join(snippet.split())
+        if compact and compact not in unique:
+            unique.append(compact)
+    return "\n---\n".join(unique)[:2600]
 
 
 def _field_options_for_field(field: dict, option_index: dict[str, list[dict[str, str]]]) -> list[dict[str, str]]:
@@ -246,10 +269,9 @@ def extraction_prompt(
     include_fields: set[str] | None = None,
     exclude_fields: set[str] | None = None,
 ) -> tuple[str, set[str]]:
-    groups = DOCUMENT_GROUPS.get(document_type)
+    target_fields = document_target_fields(document_type)
     catalog = field_catalog()
-    if groups:
-        catalog = [field for field in catalog if field.get("group") in groups]
+    catalog = [field for field in catalog if field.get("key") in target_fields]
 
     included_for_document = DOCUMENT_FIELD_INCLUSIONS.get(document_type, set())
     if included_for_document:
@@ -283,6 +305,12 @@ def extraction_prompt(
     rules = document_rules().get(document_type, [])
     preferences = _prompt_preferences()
     learning = text_learning_prompt_section(allowed)
+    admission_focus = admission_focus_sections(ocr_text) if document_type == "ADMISSION" else ""
+    focus_block = (
+        "入院记录重点章节（仍须以原始OCR核对，只用于提高家族史和烟酒史等字段的注意力）：\n"
+        f"{admission_focus}\n\n"
+        if admission_focus else ""
+    )
     prompt = (
         f"文档类型：{document_type}\n\n"
         "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段。"
@@ -301,6 +329,7 @@ def extraction_prompt(
         f"{learning + chr(10) + chr(10) if learning else ''}"
         "证据定位要求：raw_text必须尽量逐字引用当前OCR中的最小充分证据，不要改写、概括或仅返回字段值；"
         "这样系统才能把该字段自动定位回原图对应文字。若证据跨多行，可保留相邻原文并用换行连接。\n\n"
+        f"{focus_block}"
         f"OCR文字：\n{ocr_text}"
     )
     return prompt, allowed

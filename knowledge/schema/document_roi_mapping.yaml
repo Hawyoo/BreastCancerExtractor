@@ -24,12 +24,9 @@ documents:
       - {key: birth_date, label: "出生日期", target_fields: [birth_date]}
       - {key: contact, label: "联系方式", target_fields: [contact]}
       - {key: occupation, label: "职业", target_fields: [occupation]}
-      - {key: height_cm, label: "身高", target_fields: [height_cm]}
-      - {key: weight_kg, label: "体重", target_fields: [weight_kg]}
   ADMISSION:
     label: 入院记录
     regions:
-      - {key: record_number, label: "病案号", target_fields: [record_number]}
       - {key: sex, label: "性别", target_fields: [sex]}
       - {key: occupation, label: "职业", target_fields: [occupation]}
       - {key: has_chronic_disease, label: "是否有慢性病史", target_fields: [has_chronic_disease]}
@@ -63,7 +60,6 @@ documents:
       - {key: axillary_surgery_type_roi, label: "腋窝手术方式", target_fields: [surgery_type]}
       - {key: reconstruction_performed, label: "是否重建", target_fields: [reconstruction_performed]}
       - {key: reconstruction_type, label: "重建方式", target_fields: [reconstruction_type]}
-      - {key: operative_findings_roi, label: "术中所见", target_fields: [other_collected_information]}
   DISCHARGE:
     label: 出院记录
     regions:
@@ -237,43 +233,6 @@ documents:
       - {key: post_neoadj_pcr, label: "pCR评估", target_fields: [post_neoadj_pcr]}
       - {key: post_neoadj_mp_grade, label: "MP分级", target_fields: [post_neoadj_mp_grade]}
       - {key: post_neoadj_rcb_grade, label: "RCB分级", target_fields: [post_neoadj_rcb_grade]}
-  IHC:
-    label: 免疫组化
-    regions:
-      - {key: meta_specimen_site, label: "标本部位", metadata_fields: [specimen_site]}
-      - {key: meta_report_date, label: "报告日期", metadata_fields: [report_date]}
-      - {key: primary_er, label: "原发灶ER", target_fields: [primary_er]}
-      - {key: primary_pr, label: "原发灶PR", target_fields: [primary_pr]}
-      - {key: primary_her2, label: "原发灶HER2", target_fields: [primary_her2]}
-      - {key: primary_ki67, label: "原发灶Ki-67", target_fields: [primary_ki67]}
-      - {key: node_er, label: "淋巴结ER", target_fields: [node_er]}
-      - {key: node_pr, label: "淋巴结PR", target_fields: [node_pr]}
-      - {key: node_her2, label: "淋巴结HER2", target_fields: [node_her2]}
-      - {key: node_ki67, label: "淋巴结Ki-67", target_fields: [node_ki67]}
-      - {key: metastasis_er, label: "转移灶ER", target_fields: [metastasis_er]}
-      - {key: metastasis_pr, label: "转移灶PR", target_fields: [metastasis_pr]}
-      - {key: metastasis_her2, label: "转移灶HER2", target_fields: [metastasis_her2]}
-      - {key: metastasis_ki67, label: "转移灶Ki-67", target_fields: [metastasis_ki67]}
-      - {key: postop_tumor_er, label: "术后肿块ER", target_fields: [postop_tumor_er]}
-      - {key: postop_tumor_pr, label: "术后肿块PR", target_fields: [postop_tumor_pr]}
-      - {key: postop_tumor_her2, label: "术后肿块HER2", target_fields: [postop_tumor_her2]}
-      - {key: postop_tumor_ki67, label: "术后肿块Ki-67", target_fields: [postop_tumor_ki67]}
-      - {key: postop_node_er, label: "术后淋巴结ER", target_fields: [postop_node_er]}
-      - {key: postop_node_pr, label: "术后淋巴结PR", target_fields: [postop_node_pr]}
-      - {key: postop_node_her2, label: "术后淋巴结HER2", target_fields: [postop_node_her2]}
-      - {key: postop_node_ki67, label: "术后淋巴结Ki-67", target_fields: [postop_node_ki67]}
-      - {key: primary_other_ihc, label: "原发灶其他IHC", target_fields: [primary_other_ihc]}
-      - {key: node_other_ihc_1, label: "淋巴结其他IHC 1", target_fields: [node_other_ihc_1]}
-      - {key: node_other_ihc_2, label: "淋巴结其他IHC 2", target_fields: [node_other_ihc_2]}
-      - {key: metastasis_other_ihc, label: "转移灶其他IHC", target_fields: [metastasis_other_ihc]}
-      - {key: postop_tumor_other_ihc, label: "术后肿块其他IHC", target_fields: [postop_tumor_other_ihc]}
-      - {key: postop_node_other_ihc, label: "术后淋巴结其他IHC", target_fields: [postop_node_other_ihc]}
-      - {key: fish_result, label: "FISH结果", target_fields: [fish_result]}
-      - {key: primary_molecular_subtype, label: "原发灶分子分型", target_fields: [primary_molecular_subtype]}
-      - {key: node_molecular_subtype, label: "淋巴结分子分型", target_fields: [node_molecular_subtype]}
-      - {key: metastasis_molecular_subtype, label: "转移灶分子分型", target_fields: [metastasis_molecular_subtype]}
-      - {key: postop_tumor_molecular_subtype, label: "术后肿块分子分型", target_fields: [postop_tumor_molecular_subtype]}
-      - {key: postop_node_molecular_subtype, label: "术后淋巴结分子分型", target_fields: [postop_node_molecular_subtype]}
   TREATMENT:
     label: 治疗记录
     regions:

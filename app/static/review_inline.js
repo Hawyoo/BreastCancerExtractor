@@ -28,7 +28,7 @@
     biomarkers: "免疫组化 / 生物标志物",
     other: "其他",
   };
-  const DIRECT_IDENTIFIER_FIELDS = new Set(["record_number", "contact"]);
+  const READONLY_IDENTITY_FIELDS = new Set(["record_number"]);
   const INTEGER_FIELD_KEYS = new Set(["menarche_age", "menopause_age"]);
   const YES_NO_FIELD_KEYS = new Set([
     "menopausal_status",
@@ -382,7 +382,7 @@
           : currentPatientValue(column.key, observations, row);
         const defaultNo = !observation && YES_NO_FIELD_KEYS.has(column.key);
         const status = defaultNo ? "DEFAULT_UNMENTIONED" : (row.statuses[column.key] || "EMPTY");
-        const readonly = DIRECT_IDENTIFIER_FIELDS.has(column.key) || derivedField(column.key);
+        const readonly = READONLY_IDENTITY_FIELDS.has(column.key) || derivedField(column.key);
 
         const tr = document.createElement("tr");
         tr.className = "patient-review-inline-row";

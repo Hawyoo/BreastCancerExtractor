@@ -87,6 +87,10 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
 .data-preview-toolbar { display: grid; grid-template-columns: minmax(190px,260px) minmax(220px,1fr) auto; gap: 12px; align-items: end; margin: 16px 0; }
 .data-preview-toolbar label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
 .data-preview-toolbar input, .data-preview-toolbar select { width: 100%; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: var(--control); }
+.review-quality-metrics { display: grid; grid-template-columns: repeat(5,minmax(120px,1fr)); gap: 10px; margin: 0 0 14px; }
+.review-quality-metric { padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.review-quality-metric strong { display: block; color: var(--green-dark); font-size: 20px; }
+.review-quality-metric span { color: var(--muted); font-size: 12px; }
 .data-table-shell { max-height: min(68vh,720px); overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--control); }
 #data-preview-table { min-width: max-content; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 #data-preview-table th, #data-preview-table td { min-width: 130px; max-width: 260px; padding: 8px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -159,6 +163,17 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
 .status-badge { padding: 5px 9px; border-radius: 99px; color: var(--green-dark); background: var(--mint); font-size: 12px; }
 .batch-import-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .editor-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-evidence-workspace { display: grid; gap: 10px; margin: 12px 0; padding: 12px; border: 1px solid color-mix(in srgb,var(--green) 42%,var(--line)); border-radius: 12px; background: color-mix(in srgb,var(--mint) 38%,var(--panel)); }
+.review-evidence-workspace[hidden] { display: none; }
+.review-image-toolbar { display: grid; grid-template-columns: minmax(150px,.8fr) minmax(240px,1.5fr) auto auto auto; gap: 8px; align-items: end; }
+.review-toolbar-title strong { display: block; margin-top: 3px; overflow-wrap: anywhere; }
+.review-image-toolbar label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.review-image-toolbar select { width: 100%; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--control); }
+.review-zoom-controls { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+#review-zoom-level { min-width: 64px; color: var(--muted); text-align: center; font-size: 12px; }
+.review-shortcut-hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+.conflict-evidence-card.active { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb,var(--green) 20%,transparent); }
+.conflict-evidence-card em { display: -webkit-box; margin-top: 5px; overflow: hidden; color: var(--ink); font-size: 12px; font-style: normal; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; }
 .file-button { display: inline-block; }
 .secondary-file-button { color: var(--green); border: 1px solid var(--green); background: transparent; }
 .tool { color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--control); }
@@ -288,6 +303,9 @@ main { max-width: 1500px; margin: auto; padding: 32px clamp(18px,4vw,60px) 70px;
   .patients-panel { position: static; }
   .import-options, .model-columns, .ollama-provider-settings { grid-template-columns: 1fr 1fr; }
   .intro { flex-direction: column; }
+  .review-image-toolbar { grid-template-columns: 1fr 1fr; }
+  .review-shortcut-hint { width: 100%; margin-left: 0; }
+  .review-quality-metrics { grid-template-columns: 1fr 1fr; }
   .topbar { height: auto; gap: 12px; align-items: flex-start; }
   .topbar-actions { align-items: flex-end; flex-direction: column; }
 }

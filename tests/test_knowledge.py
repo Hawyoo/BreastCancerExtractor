@@ -20,12 +20,20 @@ def test_cohort_dictionary_has_unique_stable_fields():
     assert fields[-1]["label"] == "其他收集信息"
 
 
-def test_direct_identifiers_are_manual_restricted():
+def test_record_number_and_contact_are_cover_only_regular_fields():
     payload = yaml.safe_load((ROOT / "knowledge/schema/cohort_fields.yaml").read_text(encoding="utf-8"))
     by_key = {field["key"]: field for field in payload["fields"]}
-    for key in ("record_number", "contact"):
-        assert by_key[key]["capture"] == "manual_restricted"
-        assert by_key[key]["sensitivity"] == "direct_identifier"
+    assert "capture" not in by_key["record_number"]
+    assert "sensitivity" not in by_key["record_number"]
+    assert "capture" not in by_key["contact"]
+    assert "sensitivity" not in by_key["contact"]
+
+    _, cover_allowed = extraction_prompt("MEDICAL_RECORD_COVER", "病案号 0123456，电话 13800000000")
+    _, admission_allowed = extraction_prompt("ADMISSION", "住院号 0123456，电话 13800000000")
+    assert "record_number" in cover_allowed
+    assert "contact" in cover_allowed
+    assert "record_number" not in admission_allowed
+    assert "contact" not in admission_allowed
 
 
 def test_document_roi_mapping_only_targets_known_cohort_fields():
@@ -34,7 +42,7 @@ def test_document_roi_mapping_only_targets_known_cohort_fields():
     known_fields = {field["key"] for field in cohort["fields"]}
     assert set(mapping["documents"]) == {
         "MEDICAL_RECORD_COVER", "ADMISSION", "SURGERY", "DISCHARGE", "ULTRASOUND", "MAMMOGRAPHY",
-        "MRI", "BIOPSY_PATHOLOGY", "SURGICAL_PATHOLOGY", "IHC", "TREATMENT", "OTHER",
+        "MRI", "BIOPSY_PATHOLOGY", "SURGICAL_PATHOLOGY", "TREATMENT", "OTHER",
     }
     for document in mapping["documents"].values():
         region_keys = [region["key"] for region in document["regions"]]
@@ -70,6 +78,20 @@ def test_sex_is_excluded_from_cover_and_allowed_from_admission():
     assert "sex" in admission_allowed
     assert "medical_record_cover_sex_exclusion" in cover_prompt
     assert "last_menstrual_period_near_admission" in admission_prompt
+
+
+def test_admission_prompt_surfaces_history_sections_without_a_second_model_pass():
+    ocr = "主诉：乳房肿块。\n个人史：吸烟20年，偶尔饮酒。\n家族史：母亲患乳腺癌。\n查体：一般情况可。"
+    prompt, allowed = extraction_prompt("ADMISSION", ocr)
+    focus = prompt.split("入院记录重点章节", 1)[1].split("OCR文字：", 1)[0]
+    assert "吸烟20年" in focus
+    assert "偶尔饮酒" in focus
+    assert "母亲患乳腺癌" in focus
+    assert {"smoking_history", "drinking_history", "family_history_detail"} <= allowed
+
+    non_admission_prompt, _ = extraction_prompt("SURGERY", "手术顺利")
+    assert "入院记录重点章节" not in non_admission_prompt
+    assert "可抽取字段如下" in non_admission_prompt
 
 
 def test_data_processing_preferences_capture_user_rules():
@@ -156,9 +178,43 @@ def test_regular_and_staging_prompts_can_be_split():
         "SURGICAL_PATHOLOGY", "术后病理文字", include_fields={"clinical_stage", "pathological_stage"}
     )
     assert not ({"clinical_stage", "pathological_stage"} & regular)
-    assert staging == {"clinical_stage", "pathological_stage"}
+    assert staging == {"pathological_stage"}
     assert "postop_tumor_er" in regular_prompt
     assert "pathological_stage" in staging_prompt
+
+
+def test_document_mapping_is_the_ai_extraction_source_of_truth():
+    mapping = yaml.safe_load((ROOT / "knowledge/schema/document_roi_mapping.yaml").read_text(encoding="utf-8"))
+    for document_type, definition in mapping["documents"].items():
+        mapped = {
+            field
+            for region in definition["regions"]
+            for field in region.get("target_fields", [])
+        }
+        _, allowed = extraction_prompt(document_type, "")
+        assert allowed <= mapped
+        assert mapped <= allowed
+
+
+def test_removed_document_targets_stay_removed():
+    mapping = yaml.safe_load((ROOT / "knowledge/schema/document_roi_mapping.yaml").read_text(encoding="utf-8"))
+    cover = {region["key"] for region in mapping["documents"]["MEDICAL_RECORD_COVER"]["regions"]}
+    surgery = {region["key"] for region in mapping["documents"]["SURGERY"]["regions"]}
+    assert {"height_cm", "weight_kg"}.isdisjoint(cover)
+    assert "operative_findings_roi" not in surgery
+    assert "IHC" not in mapping["documents"]
+
+
+def test_document_type_api_exposes_the_same_mapping(client):
+    mapping = yaml.safe_load((ROOT / "knowledge/schema/document_roi_mapping.yaml").read_text(encoding="utf-8"))
+    response = client.get("/api/knowledge/document-types")
+    assert response.status_code == 200
+    documents = {item["key"]: item for item in response.json()["documents"]}
+    assert set(documents) == set(mapping["documents"])
+    assert "IHC" not in documents
+    assert {item["key"] for item in documents["MEDICAL_RECORD_COVER"]["regions"]}.isdisjoint(
+        {"height_cm", "weight_kg"}
+    )
 
 
 def test_tnm_context_and_postoperative_pathology_source_strategy():

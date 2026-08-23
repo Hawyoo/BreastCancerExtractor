@@ -154,9 +154,30 @@
 
           <div id="editor-help" class="editor-help">选择图片后，先拖动框选保留区域。</div>
 
-          <section id="conflict-evidence-gallery" class="conflict-evidence-gallery" hidden>
-            <div class="panel-title"><h3>冲突来源图片</h3><span>点击图片可在下方主预览中查看</span></div>
-            <div id="conflict-evidence-images" class="conflict-evidence-images"></div>
+          <section id="review-evidence-workspace" class="review-evidence-workspace" hidden>
+            <div class="review-image-toolbar">
+              <div class="review-toolbar-title">
+                <span class="eyebrow">字段定位</span>
+                <strong id="review-location-field"></strong>
+              </div>
+              <label>选择该患者的页面
+                <select id="review-document-select"></select>
+              </label>
+              <button id="review-draw-location" class="tool" type="button">框选当前字段</button>
+              <button id="review-clear-location" class="tool" type="button">清除定位</button>
+              <button id="review-save-location" class="primary" type="button">保存定位</button>
+              <div class="review-zoom-controls" aria-label="审核图片缩放">
+                <button id="review-zoom-out" class="tool preview-tool" type="button">−</button>
+                <span id="review-zoom-level">适应窗口</span>
+                <button id="review-zoom-in" class="tool preview-tool" type="button">＋</button>
+                <button id="review-zoom-fit" class="tool preview-tool" type="button">适应</button>
+                <span class="review-shortcut-hint">Ctrl+Enter 确认 · Ctrl+S 保存字段 · Ctrl+数字 选冲突结果</span>
+              </div>
+            </div>
+            <section id="conflict-evidence-gallery" class="conflict-evidence-gallery" hidden>
+              <div class="panel-title"><h3>冲突来源图片</h3><span>点击图片即选择该结果，并在下方打开来源页</span></div>
+              <div id="conflict-evidence-images" class="conflict-evidence-images"></div>
+            </section>
           </section>
 
           <div class="import-options">
@@ -172,7 +193,6 @@
                 <option value="MAMMOGRAPHY">钼靶</option>
                 <option value="BIOPSY_PATHOLOGY">穿刺病理</option>
                 <option value="SURGICAL_PATHOLOGY">术后病理</option>
-                <option value="IHC">免疫组化</option>
                 <option value="TREATMENT">治疗记录</option>
               </select>
             </label>
@@ -265,6 +285,7 @@
         </label>
         <button id="export-data-csv" class="primary" type="button">导出CSV</button>
       </div>
+      <div id="review-quality-metrics" class="review-quality-metrics" aria-label="审核质量统计"></div>
       <div id="data-preview-loading" class="muted-empty" hidden>正在整理全部患者数据…</div>
       <div class="data-table-shell">
         <table id="data-preview-table">

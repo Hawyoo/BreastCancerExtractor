@@ -1,5 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const documentImageCache = new Map();
+const DOCUMENT_IMAGE_CACHE_LIMIT = 8;
 
 const state = {
   patients: [], patient: null, sourceImage: null, enhancedImage: null,
@@ -11,29 +13,29 @@ const state = {
   enhancementEnabled: localStorage.getItem("image-enhancement") === "enhanced",
   viewZoom: 1, canvasFitScale: 1, reviewDocumentId: null, reviewObservationId: null,
   editingDocumentId: null, editorBaseline: null,
-  selectedObservationId: null,
+  selectedObservationId: null, reviewCandidateObservationId: null, reviewMode: false,
+  reviewLocationDirty: false,
   dataPreview: null,
 };
 
 const documentTypeLabels = {
   OTHER:"其他", MEDICAL_RECORD_COVER:"病案首页", ADMISSION:"入院记录", DISCHARGE:"出院记录",
   SURGERY:"手术记录", ULTRASOUND:"超声", MRI:"MRI", MAMMOGRAPHY:"钼靶",
-  BIOPSY_PATHOLOGY:"穿刺病理", SURGICAL_PATHOLOGY:"术后病理", IHC:"免疫组化", TREATMENT:"治疗记录",
+  BIOPSY_PATHOLOGY:"穿刺病理", SURGICAL_PATHOLOGY:"术后病理", TREATMENT:"治疗记录",
 };
 
 const commonRoiTypes = [["OTHER","其他信息"]];
 const roiTypesByDocument = {
   OTHER: commonRoiTypes,
-  MEDICAL_RECORD_COVER: [["cover_identity","病案号与出生日期"],["cover_contact","联系方式"],["cover_occupation","职业"],["cover_body_measurements","身高与体重"],...commonRoiTypes],
-  ADMISSION: [["admission_identity","病案号、性别与职业"],["chronic_and_other_cancer_history","既往史、慢性病与其他癌种"],["prior_breast_history","乳腺癌及既往乳腺手术史"],["reproductive_history","婚育史"],["menstrual_history","月经与绝经史"],["family_history","家族史"],["lifestyle_history","吸烟与饮酒史"],["presentation_disease","偏侧性、来院转移与转移部位"],...commonRoiTypes],
+  MEDICAL_RECORD_COVER: [["cover_identity","病案号与出生日期"],["cover_contact","联系方式"],["cover_occupation","职业"],...commonRoiTypes],
+  ADMISSION: [["admission_identity","性别与职业"],["chronic_and_other_cancer_history","既往史、慢性病与其他癌种"],["prior_breast_history","乳腺癌及既往乳腺手术史"],["reproductive_history","婚育史"],["menstrual_history","月经与绝经史"],["family_history","家族史"],["lifestyle_history","吸烟与饮酒史"],["presentation_disease","偏侧性、来院转移与转移部位"],...commonRoiTypes],
   DISCHARGE: [["discharge_diagnosis","出院诊断、偏侧性与确诊日期"],["tnm_stage","TNM、临床分期与病理分期"],["pathology_summary","穿刺及术后病理摘要"],["ihc_summary","免疫组化摘要"],["fish_summary","FISH结果"],["surgery_summary","手术摘要"],["treatment_summary","治疗经过与方案"],["followup_plan","出院用药与随访计划"],...commonRoiTypes],
-  SURGERY: [["surgery_date","手术日期"],["breast_surgery","乳房手术方式"],["axillary_surgery","腋窝手术方式"],["reconstruction","是否重建及重建方式"],["operative_findings","术中所见"],...commonRoiTypes],
+  SURGERY: [["surgery_date","手术日期"],["breast_surgery","乳房手术方式"],["axillary_surgery","腋窝手术方式"],["reconstruction","是否重建及重建方式"],...commonRoiTypes],
   ULTRASOUND: [["imaging_date_phase","检查日期与治疗阶段"],["malignant_lesion_size","恶性肿块大小"],["malignant_lesion_location","恶性肿块位置及距乳头/皮肤距离"],["regional_nodes","区域淋巴结情况"],["ultrasound_birads","BI-RADS分级"],["post_neoadj_response","新辅助后肿块及淋巴结缓解"],...commonRoiTypes],
   MRI: [["imaging_date_phase","检查日期与治疗阶段"],["malignant_lesion_size","恶性肿块大小"],["malignant_lesion_location","恶性肿块位置及距乳头/皮肤距离"],["regional_nodes","区域淋巴结情况"],["mri_birads","BI-RADS分级"],["post_neoadj_response","新辅助后肿块及淋巴结缓解"],...commonRoiTypes],
   MAMMOGRAPHY: [["imaging_date_phase","检查日期与治疗阶段"],["lesion_number_and_size","恶性肿块单发/多发及大小"],["malignant_lesion_location","恶性肿块位置及距乳头/皮肤距离"],["mammography_birads","BI-RADS分级"],["calcification","钙化情况"],["regional_nodes","区域淋巴结情况"],["other_mammography","其他钼靶结果"],...commonRoiTypes],
   BIOPSY_PATHOLOGY: [["specimen_and_date","标本部位与报告日期"],["primary_pathology","原发灶病理类型与分级"],["primary_ihc","原发灶ER/PR/HER2/Ki-67及其他IHC"],["node_pathology","淋巴结病理类型与分级"],["node_ihc","淋巴结ER/PR/HER2/Ki-67及其他IHC"],["metastasis_pathology","转移灶病理类型与分级"],["metastasis_ihc","转移灶ER/PR/HER2/Ki-67及其他IHC"],["biopsy_fish","FISH结果"],...commonRoiTypes],
   SURGICAL_PATHOLOGY: [["specimen_and_date","标本部位与报告日期"],["postop_tumor_pathology","术后肿块类型、分级与大小"],["postop_tumor_ihc","术后肿块ER/PR/HER2/Ki-67及其他IHC"],["postop_nodes","术后淋巴结数量与转移情况"],["postop_node_ihc","术后淋巴结ER/PR/HER2/Ki-67及其他IHC"],["surgical_fish","FISH结果"],["pathological_stage","pTNM/ypTNM及病理分期"],["neoadj_pathology_response","pCR、MP与RCB评估"],...commonRoiTypes],
-  IHC: [["specimen_and_date","标本部位与报告日期"],["ihc_panel","ER/PR/HER2/Ki-67面板"],["other_ihc","其他免疫组化"],["fish_result","FISH结果"],["molecular_subtype","分子分型"],...commonRoiTypes],
   TREATMENT: [["neoadjuvant_treatment","新辅助方案、周期与日期"],["radiotherapy","放疗"],["chemotherapy","术后化疗方案与周期"],["endocrine_therapy","内分泌治疗方案"],["targeted_therapy","靶向治疗方案与周期"],["immunotherapy","免疫治疗方案与周期"],["palliative_treatment","姑息全身治疗方案"],["recurrence_metastasis","复发、转移及事件日期"],["second_primary","第二原发癌、日期及病理"],["followup_and_death","末次就诊、死亡状态与日期"],...commonRoiTypes],
 };
 
@@ -232,6 +234,14 @@ function renderDataPreview() {
   const dataset=state.dataPreview,table=$("#data-preview-table"),head=table.querySelector("thead"),body=table.querySelector("tbody");
   head.innerHTML="";body.innerHTML="";
   if(!dataset)return;
+  const metrics=dataset.review_metrics||{};
+  $("#review-quality-metrics").innerHTML=[
+    ["审核完成率",`${Number(metrics.verification_rate||0).toFixed(1)}%`],
+    ["已确认字段",metrics.verified_fields||0],
+    ["待审核字段",metrics.pending_fields||0],
+    ["冲突字段",metrics.conflict_fields||0],
+    ["人工修改字段",metrics.manually_modified_fields||0],
+  ].map(([label,value])=>`<div class="review-quality-metric"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join("");
   const headerRow=document.createElement("tr");
   for(const column of dataset.columns){
     const th=document.createElement("th");th.textContent=column.label;th.title=`字段名：${column.key}`;headerRow.appendChild(th);
@@ -291,7 +301,7 @@ function updatePatientSidebar() {
 async function selectPatient(id) {
   const switching=state.patient&&state.patient.id!==id;
   if (state.rawQueuePatientId && state.rawQueuePatientId !== id) clearRawQueue();
-  if(switching){clearEditor();state.selectedObservationId=null;}
+  if(switching){clearEditor();state.selectedObservationId=null;documentImageCache.clear();}
   state.patient = await api(`/api/patients/${id}`);
   $("#empty-state").hidden = true; $("#patient-workspace").hidden = false;
   $("#current-patient-code").textContent = state.patient.patient_code;
@@ -304,6 +314,54 @@ async function refreshCurrentPatient(patientId) {
   state.patient = await api(`/api/patients/${patientId}`);
   $("#current-patient-status").textContent = statusText(state.patient.status);
   renderDocuments(); renderObservations(); updatePatientSidebar(); await loadPatients();
+}
+
+let patientListRefreshTimer=null;
+function schedulePatientListRefresh() {
+  if(patientListRefreshTimer!==null)clearTimeout(patientListRefreshTimer);
+  patientListRefreshTimer=setTimeout(()=>{
+    patientListRefreshTimer=null;
+    loadPatients().catch(error=>toast(error.message));
+  },500);
+}
+
+function applyObservationReviewResult(result) {
+  if(!state.patient)return;
+  const observation=(state.patient.observations||[]).find(item=>item.id===(result.requested_id||result.id))
+    ||(state.patient.observations||[]).find(item=>item.id===result.id);
+  if(observation){
+    if(result.region){
+      const selectedCandidate=(observation.candidate_values||[]).find(candidate=>candidate.id===result.id);
+      const replacedRegionIds=new Set([observation.region_id,selectedCandidate?.region_id].filter(Boolean));
+      for(const doc of state.patient.documents||[]){
+        doc.regions=(doc.regions||[]).filter(region=>!replacedRegionIds.has(region.id));
+      }
+      const regionDocument=(state.patient.documents||[]).find(doc=>doc.id===result.region.document_id);
+      if(regionDocument)regionDocument.regions.push(result.region);
+    }
+    observation.id=result.id;
+    observation.document_id=result.document_id;
+    observation.region_id=result.region_id;
+    observation.evidence_status=result.evidence_status;
+    observation.current_value=result.value;
+    observation.status=result.status;
+    observation.confidence=result.confidence;
+    for(const candidate of observation.candidate_values||[]){
+      candidate.selected=candidate.id===result.id;
+      if(candidate.selected&&result.region){
+        candidate.document_id=result.document_id;candidate.region_id=result.region_id;
+      }
+    }
+    state.selectedObservationId=result.id;
+  }
+  const superseded=new Set(result.superseded_ids||[]);
+  for(const candidate of state.patient.observations||[]){
+    if(superseded.has(candidate.id))candidate.status="SUPERSEDED";
+  }
+  if(result.patient_status)state.patient.status=result.patient_status;
+  state.reviewLocationDirty=false;
+  $("#current-patient-status").textContent=statusText(state.patient.status);
+  renderObservations();updatePatientSidebar();schedulePatientListRefresh();
 }
 
 function leavePatient() {
@@ -379,7 +437,7 @@ function guessDocumentType(filename) {
     ["MEDICAL_RECORD_COVER",/首页|病案/],["ADMISSION",/入院|首次病程/],["DISCHARGE",/出院/],
     ["SURGERY",/手术记录|手术/],["ULTRASOUND",/超声|彩超/],["MRI",/mri|磁共振/],
     ["MAMMOGRAPHY",/钼靶|乳腺摄影/],["SURGICAL_PATHOLOGY",/术后病理|大病理/],
-    ["BIOPSY_PATHOLOGY",/穿刺|活检/],["IHC",/免疫组化|ihc/],["TREATMENT",/化疗|放疗|内分泌|靶向|治疗/],
+    ["BIOPSY_PATHOLOGY",/穿刺|活检|免疫组化|ihc/],["TREATMENT",/化疗|放疗|内分泌|靶向|治疗/],
   ];
   return patterns.find(([,pattern])=>pattern.test(name))?.[0]||"OTHER";
 }
@@ -428,6 +486,8 @@ function clearEditor() {
   state.redactions=[];state.rois=[];state.activeRoiIndex=-1;state.roiResize=null;state.drawing=null;
   state.viewZoom=1;state.canvasFitScale=1;state.reviewDocumentId=null;state.reviewObservationId=null;
   state.editingDocumentId=null;state.editorBaseline=null;
+  state.reviewMode=false;state.reviewLocationDirty=false;
+  setReviewWorkspace(false);
   ctx.clearRect(0,0,canvas.width,canvas.height);canvas.width=0;canvas.height=0;
   $("#canvas-placeholder").hidden=false;enableEditor(false);setMetadataControlsEnabled(true);updateZoomControls();
 }
@@ -500,6 +560,7 @@ function setMetadataControlsEnabled(enabled) {
 function updateZoomControls() {
   const percent=Math.round(state.viewZoom*100);
   $("#zoom-level").textContent=state.viewZoom===1?"适应窗口":`${percent}%`;
+  $("#review-zoom-level").textContent=state.viewZoom===1?"适应窗口":`${percent}%`;
   $$(".preview-tool").forEach(button=>button.disabled=!state.sourceImage);
   $("#zoom-out").disabled=!state.sourceImage||state.viewZoom<=0.5;
   $("#zoom-in").disabled=!state.sourceImage||state.viewZoom>=4;
@@ -525,6 +586,9 @@ function setViewZoom(value) {
 $("#zoom-out").onclick=()=>setViewZoom(state.viewZoom-0.25);
 $("#zoom-in").onclick=()=>setViewZoom(state.viewZoom+0.25);
 $("#zoom-fit").onclick=()=>setViewZoom(1);
+$("#review-zoom-out").onclick=()=>setViewZoom(state.viewZoom-0.25);
+$("#review-zoom-in").onclick=()=>setViewZoom(state.viewZoom+0.25);
+$("#review-zoom-fit").onclick=()=>setViewZoom(1);
 
 function scaleX() { return state.sourceImage ? canvas.width / state.sourceImage.naturalWidth : 1; }
 function scaleY() { return state.sourceImage ? canvas.height / state.sourceImage.naturalHeight : 1; }
@@ -666,13 +730,21 @@ canvas.addEventListener("pointermove", (event) => {
 });
 canvas.addEventListener("pointerup", () => {
   if(state.cropResize){state.cropResize=null;draw();return;}
-  if(state.roiResize){state.roiResize=null;draw();return;}
+  if(state.roiResize){state.roiResize=null;if(state.reviewMode)state.reviewLocationDirty=true;draw();return;}
   if (!state.drawing) return; const display = normalizedRect(state.drawing.start,state.drawing.end); state.drawing=null;
   if (display.width < 6 || display.height < 6) { draw(); return; }
   const rect = normalizedRect(toSource({x:display.x,y:display.y}),toSource({x:display.x+display.width,y:display.y+display.height}));
   if (state.mode === "crop") { state.crop=rect; state.cropEditable=true; $("#editor-help").textContent="拖动黄色边线或八个控制点，可继续微调裁剪范围。"; }
   if (state.mode === "redact") state.redactions.push(rect);
-  if (state.mode === "roi") { state.rois.push({...rect,type:$("#roi-type").value,label:$("#roi-type").selectedOptions[0].text}); state.activeRoiIndex=state.rois.length-1; $("#editor-help").textContent="点击任意ROI进行选择，拖动绿色边线或控制点微调。"; }
+  if (state.mode === "roi") {
+    const observation=selectedObservation();
+    const roi=state.reviewMode
+      ? {...rect,type:"FIELD_REVIEW_EVIDENCE",label:`字段定位：${observation?.field_label||observation?.field_name||"当前字段"}`}
+      : {...rect,type:$("#roi-type").value,label:$("#roi-type").selectedOptions[0].text};
+    if(state.reviewMode){state.rois=[roi];state.reviewLocationDirty=true;}else state.rois.push(roi);
+    state.activeRoiIndex=state.rois.length-1;
+    $("#editor-help").textContent=state.reviewMode?"当前字段定位已框选；可拖动边线微调，然后点击保存定位。":"点击任意ROI进行选择，拖动绿色边线或控制点微调。";
+  }
   draw();
 });
 canvas.addEventListener("pointercancel", () => { state.drawing=null;state.cropResize=null;state.roiResize=null;draw(); });
@@ -902,51 +974,133 @@ function renderDocuments() {
   }
 }
 
+function setReviewWorkspace(active,doc=null,observation=null) {
+  state.reviewMode=active;
+  $(".editor-toolbar").hidden=active;
+  $(".import-options").hidden=active;
+  $("#review-evidence-workspace").hidden=!active;
+  if(!active)return;
+  $("#review-location-field").textContent=observation?.field_label||observation?.field_name||"当前字段";
+  const selector=$("#review-document-select"),selected=doc?.id||selector.value;
+  selector.innerHTML=(state.patient?.documents||[]).map(item=>
+    `<option value="${item.id}">${escapeHtml(item.display_name)} · ${escapeHtml(documentTypeLabels[item.document_type]||item.document_type)}</option>`
+  ).join("");
+  selector.value=selected;
+}
+
+function loadCurrentFieldLocation(doc,observation) {
+  if(!state.reviewMode){
+    state.rois=(doc.regions||[]).map(region=>({
+      id:region.id,x:Number(region.x),y:Number(region.y),width:Number(region.width),height:Number(region.height),
+      type:region.region_type,label:region.label,
+    }));
+    state.reviewLocationDirty=false;
+    return;
+  }
+  const candidate=(observation?.candidate_values||[]).find(item=>item.id===state.reviewCandidateObservationId);
+  const regionId=candidate?.region_id||observation?.region_id;
+  const region=(doc.regions||[]).find(item=>item.id===regionId);
+  state.rois=region?[{
+    id:region.id,x:Number(region.x),y:Number(region.y),width:Number(region.width),height:Number(region.height),
+    type:"FIELD_REVIEW_EVIDENCE",label:`字段定位：${observation.field_label||observation.field_name}`,
+  }]:[];
+  state.reviewLocationDirty=false;
+}
+
+function documentImageUrl(doc) {
+  return `/api/documents/${doc.id}/image?v=${encodeURIComponent(doc.sha256||doc.id)}`;
+}
+
+function loadCachedDocumentImage(doc) {
+  const url=documentImageUrl(doc);
+  if(documentImageCache.has(url))return documentImageCache.get(url);
+  const promise=new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>{documentImageCache.delete(url);reject(new Error(`无法打开 ${doc.display_name}`));};
+    image.src=url;
+  });
+  documentImageCache.set(url,promise);
+  while(documentImageCache.size>DOCUMENT_IMAGE_CACHE_LIMIT){
+    documentImageCache.delete(documentImageCache.keys().next().value);
+  }
+  return promise;
+}
+
+function preloadAdjacentReviewDocuments(documentId) {
+  if(!state.reviewMode)return;
+  const documents=state.patient?.documents||[],index=documents.findIndex(item=>item.id===documentId);
+  for(const adjacentIndex of [index-1,index+1]){
+    const adjacent=documents[adjacentIndex];
+    if(adjacent)loadCachedDocumentImage(adjacent).catch(()=>{});
+  }
+}
+
 async function openSavedDocumentPreview(documentId,observationId=null) {
   const doc=(state.patient?.documents||[]).find(item=>item.id===documentId);
   if(!doc)throw new Error("找不到该记录对应的脱敏图片");
+  const observation=(state.patient?.observations||[]).find(item=>item.id===observationId)||selectedObservation();
   if(observationId===null){state.selectedObservationId=null;renderFieldReview();renderObservations();}
+  if(state.editingDocumentId===doc.id&&state.sourceImage){
+    state.reviewDocumentId=doc.id;state.reviewObservationId=observationId;
+    setReviewWorkspace(observationId!==null,doc,observation);
+    loadCurrentFieldLocation(doc,observation);
+    state.mode=observationId!==null?"roi":"crop";state.activeRoiIndex=state.rois.length-1;
+    $$(".observation").forEach(row=>row.classList.toggle("previewing",row.dataset.observationId===observationId));
+    draw();
+    preloadAdjacentReviewDocuments(doc.id);
+    if(observationId!==null)$("#review-evidence-workspace").scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
   const activeRaw=state.rawQueue[state.activeRawIndex];
   persistActiveRawItem();
   if(activeRaw?.status==="EDITING")activeRaw.status="WAITING";
   state.activeRawIndex=-1;state.rawLoadToken+=1;clearEditor();renderRawQueue();
-  const token=state.rawLoadToken,image=new Image();
-  await new Promise((resolve,reject)=>{
-    image.onload=resolve;
-    image.onerror=()=>reject(new Error(`无法打开 ${doc.display_name}`));
-    image.src=`/api/documents/${doc.id}/image?v=${encodeURIComponent(doc.sha256||doc.id)}`;
-  });
+  const token=state.rawLoadToken,image=await loadCachedDocumentImage(doc);
   if(token!==state.rawLoadToken)return;
   state.sourceImage=image;state.enhancedImage=state.enhancementEnabled?createEnhancedImage(image):null;
-  state.mode="crop";state.viewZoom=1;state.reviewDocumentId=doc.id;state.reviewObservationId=observationId;
+  state.mode=observationId!==null?"roi":"crop";state.viewZoom=1;state.reviewDocumentId=doc.id;state.reviewObservationId=observationId;
   state.editingDocumentId=doc.id;
   state.crop={x:0,y:0,width:image.naturalWidth,height:image.naturalHeight};state.cropEditable=false;
   state.redactions=[];
-  state.rois=(doc.regions||[]).map(region=>({
-    x:Number(region.x),y:Number(region.y),width:Number(region.width),height:Number(region.height),
-    type:region.region_type,label:region.label,
-  }));
+  setReviewWorkspace(observationId!==null,doc,observation);
+  loadCurrentFieldLocation(doc,observation);
   state.activeRoiIndex=state.rois.length-1;state.drawing=null;
   $("#document-type").value=doc.document_type;updateRoiTypeOptions();$("#display-name").value=doc.display_name;
   state.editorBaseline=editorRevisionSignature();
-  $$('[data-mode]').forEach(button=>button.classList.toggle("active",button.dataset.mode==="crop"));
+  $$('[data-mode]').forEach(button=>button.classList.toggle("active",button.dataset.mode===state.mode));
   setMetadataControlsEnabled(true);enableEditor(true);fitCanvas();draw();$("#canvas-placeholder").hidden=true;
-  $("#editor-help").textContent=`${doc.display_name}：可继续裁剪、增加遮盖或调整ROI；发生修改后才能覆盖并重新识别。`;
+  $("#editor-help").textContent=observationId!==null
+    ?`${doc.display_name}：只能框选“${observation?.field_label||observation?.field_name||"当前字段"}”的证据位置。`
+    :`${doc.display_name}：可继续裁剪、增加遮盖或调整ROI；发生修改后才能覆盖并重新识别。`;
   $$(".observation").forEach(row=>row.classList.toggle("previewing",row.dataset.observationId===observationId));
-  $(".import-options").scrollIntoView({behavior:"smooth",block:"start"});
+  preloadAdjacentReviewDocuments(doc.id);
+  (observationId!==null?$("#review-evidence-workspace"):$(".import-options")).scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 function selectedObservation() {
   return (state.patient?.observations||[]).find(item=>item.id===state.selectedObservationId)||null;
 }
 
-function orderedObservations() {
-  return [...(state.patient?.observations||[])].sort((left,right)=>{
+function fieldOrderedObservations() {
+  return (state.patient?.observations||[]).filter(item=>item.status!=="SUPERSEDED").sort((left,right)=>{
     const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
     if(reviewGroup!==0)return reviewGroup;
     const fieldOrder=(Number(left.field_order) || 0)-(Number(right.field_order) || 0);
     if(fieldOrder!==0)return fieldOrder;
     return String(left.created_at||"").localeCompare(String(right.created_at||""))||String(left.id).localeCompare(String(right.id));
+  });
+}
+
+function orderedObservations() {
+  const documentOrder=new Map((state.patient?.documents||[]).map((doc,index)=>[doc.id,index]));
+  return fieldOrderedObservations().sort((left,right)=>{
+    const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
+    if(reviewGroup!==0)return reviewGroup;
+    const sourceOrder=(documentOrder.get(left.document_id)??Number.MAX_SAFE_INTEGER)
+      -(documentOrder.get(right.document_id)??Number.MAX_SAFE_INTEGER);
+    if(sourceOrder!==0)return sourceOrder;
+    return (Number(left.field_order)||0)-(Number(right.field_order)||0);
   });
 }
 
@@ -976,7 +1130,7 @@ function renderFieldReview() {
   const completePanel=$("#review-complete-panel");
   if(!state.patient||!observation){
     panel.hidden=true;
-    const observations=state.patient?.observations||[];
+    const observations=(state.patient?.observations||[]).filter(item=>item.status!=="SUPERSEDED");
     completePanel.hidden=!(state.patient&&observations.length&&observations.every(item=>item.status==="VERIFIED"));
     renderConflictEvidence(null);
     return;
@@ -1023,16 +1177,26 @@ function renderConflictEvidence(observation) {
   }
   if(candidates.length<2){gallery.hidden=true;return;}
   gallery.hidden=false;
-  for(const candidate of candidates){
+  for(const [candidateIndex,candidate] of candidates.entries()){
     const button=document.createElement("button");button.type="button";button.className="conflict-evidence-card";
-    button.innerHTML=`<img src="/api/documents/${encodeURIComponent(candidate.document_id)}/image" alt="${escapeHtml(candidate.source)}"><span><strong>${escapeHtml(candidate.value)}</strong><small>${escapeHtml(candidate.source)}</small></span>`;
-    button.onclick=()=>openSavedDocumentPreview(candidate.document_id,observation.id).catch(error=>toast(error.message));
+    button.dataset.candidateIndex=String(candidateIndex+1);
+    button.classList.toggle("active",candidate.id===(state.reviewCandidateObservationId||observation.id));
+    const shortcut=candidateIndex<9?`Ctrl+${candidateIndex+1} · `:"",confidence=candidate.confidence?` · ${candidate.confidence}`:"";
+    button.innerHTML=`<img src="/api/documents/${encodeURIComponent(candidate.document_id)}/image" alt="${escapeHtml(candidate.source)}"><span><strong>${escapeHtml(candidate.value)}</strong><small>${escapeHtml(shortcut+candidate.source+confidence)}</small>${candidate.raw_text?`<em>${escapeHtml(candidate.raw_text)}</em>`:""}</span>`;
+    button.onclick=()=>{
+      state.reviewCandidateObservationId=candidate.id;
+      $("#review-current-value").value=candidate.value??"";
+      renderReviewChoices(observation);
+      container.querySelectorAll(".conflict-evidence-card").forEach(item=>item.classList.toggle("active",item===button));
+      openSavedDocumentPreview(candidate.document_id,observation.id).catch(error=>toast(error.message));
+    };
     container.appendChild(button);
   }
 }
 
 async function chooseObservation(observation) {
   state.selectedObservationId=observation.id;
+  state.reviewCandidateObservationId=observation.id;
   renderFieldReview();renderObservations();
   await openSavedDocumentPreview(observation.document_id,observation.id);
 }
@@ -1046,6 +1210,46 @@ async function navigateObservation(offset) {
 
 $("#previous-field").onclick=()=>navigateObservation(-1).catch(error=>toast(error.message));
 $("#next-field").onclick=()=>navigateObservation(1).catch(error=>toast(error.message));
+
+$("#review-document-select").onchange=()=>{
+  const observation=selectedObservation();if(!observation)return;
+  openSavedDocumentPreview($("#review-document-select").value,observation.id).catch(error=>toast(error.message));
+};
+
+$("#review-draw-location").onclick=()=>{
+  if(!state.reviewMode||!state.sourceImage)return;
+  state.mode="roi";state.rois=[];state.activeRoiIndex=-1;state.drawing=null;state.reviewLocationDirty=true;
+  $("#editor-help").textContent="请在图片上拖动框选当前字段的唯一证据位置。";draw();
+};
+
+$("#review-clear-location").onclick=()=>{
+  if(!state.reviewMode)return;
+  state.rois=[];state.activeRoiIndex=-1;state.drawing=null;state.reviewLocationDirty=true;
+  $("#editor-help").textContent="当前字段定位已清除；可重新框选。";draw();
+};
+
+$("#review-save-location").onclick=async(event)=>{
+  const observation=selectedObservation(),roi=state.rois[0];
+  if(!observation||!state.reviewDocumentId)return;
+  if(!roi)return toast("请先框选当前字段的定位");
+  const button=event.currentTarget;button.disabled=true;
+  try{
+    const targetId=state.reviewCandidateObservationId||observation.id;
+    const result=await api(`/api/observations/${targetId}/evidence-location`,{
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({document_id:state.reviewDocumentId,x:roi.x,y:roi.y,width:roi.width,height:roi.height,operator:"local-user"}),
+    });
+    for(const doc of state.patient.documents||[])doc.regions=(doc.regions||[]).filter(item=>item.id!==observation.region_id);
+    const doc=(state.patient.documents||[]).find(item=>item.id===result.document_id);
+    if(doc)doc.regions.push(result.region);
+    observation.document_id=result.document_id;observation.region_id=result.region.id;observation.evidence_status=result.evidence_status;
+    const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
+    if(candidate){candidate.document_id=result.document_id;candidate.region_id=result.region.id;}
+    state.rois=[{...result.region,type:result.region.region_type}];state.activeRoiIndex=0;state.reviewLocationDirty=false;draw();
+    toast("当前字段定位已保存");
+  }catch(error){toast(error.message);}
+  finally{button.disabled=false;}
+};
 
 function nextUnverifiedObservation(afterId) {
   const observations=orderedObservations();
@@ -1064,30 +1268,48 @@ $("#save-field-edit").onclick=async()=>{
   if(value===(observation.current_value??""))return toast("字段值没有变化");
   const reason=$("#review-note").value.trim()||"人工复核修正";
   try{
-    await api(`/api/observations/${observation.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,reason,operator:"local-user"})});
-    await refreshCurrentPatient(state.patient.id);toast("字段修改已保存");
+    const result=await api(`/api/observations/${observation.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,reason,operator:"local-user"})});
+    observation.current_value=result.value;observation.status=result.status;
+    renderFieldReview();renderObservations();schedulePatientListRefresh();toast("字段修改已保存");
   }catch(error){toast(error.message);}
 };
 
 $("#verify-field").onclick=async()=>{
   const observation=selectedObservation();if(!observation)return;
-  const confirmedId=observation.id;
   const value=$("#review-current-value").value.trim(),note=$("#review-note").value.trim();
+  const button=$("#verify-field");button.disabled=true;
   try{
-    if(value!==(observation.current_value??"")){
-      await api(`/api/observations/${observation.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,reason:note||"人工复核修正",operator:"local-user"})});
-    }
-    await api(`/api/observations/${observation.id}/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({operator:"local-user",note:note||null})});
-    await refreshCurrentPatient(state.patient.id);
-    const next=nextUnverifiedObservation(confirmedId);
+    const roi=state.reviewLocationDirty?state.rois[0]:null;
+    const evidence_location=roi&&state.reviewDocumentId
+      ?{document_id:state.reviewDocumentId,x:roi.x,y:roi.y,width:roi.width,height:roi.height,operator:"local-user"}
+      :null;
+    const result=await api(`/api/observations/${observation.id}/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,candidate_id:state.reviewCandidateObservationId,evidence_location,operator:"local-user",note:note||null})});
+    applyObservationReviewResult(result);
+    const next=nextUnverifiedObservation(result.id);
     if(next){await chooseObservation(next);toast("字段已确认，已进入下一条待审核记录");}
     else{
+      await refreshCurrentPatient(state.patient.id);
       state.selectedObservationId=null;clearEditor();renderFieldReview();renderObservations();
       $("#review-complete-panel").scrollIntoView({behavior:"smooth",block:"start"});
       toast("当前患者全部字段已处理完毕");
     }
   }catch(error){toast(error.message);}
+  finally{button.disabled=false;}
 };
+
+document.addEventListener("keydown",event=>{
+  if(!state.reviewMode||!selectedObservation())return;
+  if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key==="Enter"){
+    event.preventDefault();$("#verify-field").click();return;
+  }
+  if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==="s"){
+    event.preventDefault();$("#save-field-edit").click();return;
+  }
+  if(event.ctrlKey&&!event.altKey&&!event.shiftKey&&/^[1-9]$/.test(event.key)){
+    const candidate=$("#conflict-evidence-images").querySelector(`[data-candidate-index="${event.key}"]`);
+    if(candidate){event.preventDefault();candidate.click();}
+  }
+});
 
 async function showPatientReview() {
   if(!state.patient)return;
@@ -1113,7 +1335,7 @@ $("#quick-add-patient").onclick=()=>{
 };
 
 function renderObservations() {
-  const observations=orderedObservations();$("#observation-count").textContent=`${observations.length} 项`;const list=$("#observation-list");list.innerHTML="";
+  const observations=fieldOrderedObservations();$("#observation-count").textContent=`${observations.length} 项`;const list=$("#observation-list");list.innerHTML="";
   if(!observations.length){list.innerHTML='<div class="muted-empty">OCR / AI 抽取接入后，字段会在这里进入人工审核。</div>';return;}
   let currentReviewGroup=null;
   for(const obs of observations){

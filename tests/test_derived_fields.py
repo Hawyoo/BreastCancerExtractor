@@ -102,3 +102,32 @@ def test_verified_master_fields_materialize_readonly_projections(client):
     }
     assert derived["clinical_t_component"]["status"] == "VERIFIED"
     assert derived["pre_us_tumor_size_mm_dim3_mm"]["current_value"] == "15"
+
+
+def test_verify_can_edit_and_materialize_derived_fields_in_one_transaction(client):
+    patient = client.post("/api/patients", json={"patient_code": "7654322"}).json()
+    created = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "field_name": "clinical_stage",
+            "value": "cT1N0M0",
+            "raw_text": "cT1N0M0",
+            "confidence": "HIGH",
+            "source_mode": "RECORDED",
+        },
+    ).json()
+
+    result = client.post(
+        f"/api/observations/{created['id']}/verify",
+        json={"operator": "reviewer", "value": "cT2N1M0", "note": "corrected during review"},
+    )
+
+    assert result.status_code == 200
+    assert result.json()["value"] == "cT2N1M0"
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    values = {item["field_name"]: item["current_value"] for item in detail["observations"]}
+    assert values["clinical_stage"] == "cT2N1M0"
+    assert values["clinical_t_component"] == "cT2"
+    operations = [item["operation"] for item in detail["audit_log"]]
+    assert "USER_EDIT" in operations
+    assert "USER_VERIFY" in operations

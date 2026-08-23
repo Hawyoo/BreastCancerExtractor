@@ -17,11 +17,11 @@ notes:
   - 字段顺序即默认宽表导出顺序。
   - 带“补充填空”的字段保留原文，不覆盖对应的标准化字段。
   - 每个非空 AI 字段均须关联 document_id、region_id、source_text 和模型版本。
-  - record_number 与 contact 是直接身份标识，不得从已脱敏图片自动抽取。
+  - record_number 与 contact 均按普通队列字段读取，但只允许从病案首页抽取。
 
 fields:
   # 基本信息、生活史与既往史
-  - {key: record_number, label: 病案号（7位）, group: demographics, type: string, pattern: '^\d{7}$', capture: manual_restricted, sensitivity: direct_identifier}
+  - {key: record_number, label: 病案号（7位）, group: demographics, type: string, pattern: '^\d{7}$'}
   - key: sex
     label: 性别
     group: demographics
@@ -34,7 +34,7 @@ fields:
         code_position: 性别字段名后的首个独立选择数字
         code_map: {'1': MALE, '2': FEMALE}
         printed_options: '1.男 2.女'
-  - {key: contact, label: 联系方式, group: demographics, type: string, capture: manual_restricted, sensitivity: direct_identifier}
+  - {key: contact, label: 联系方式, group: demographics, type: string}
   - {key: birth_date, label: 出生日期, group: demographics, type: date, sensitivity: quasi_identifier}
   - {key: height_cm, label: 身高（cm）, group: demographics, type: number, unit: cm}
   - {key: weight_kg, label: 体重（kg）, group: demographics, type: number, unit: kg}

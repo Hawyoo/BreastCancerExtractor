@@ -41,14 +41,15 @@ def test_imaging_date_phase_and_measurements_are_split():
     assert {"pre_us_tumor_size_mm", "pre_us_tumor_location", "pre_us_nipple_distance_cm", "pre_us_skin_distance"} <= us
 
 
-def test_ihc_core_markers_are_independent_roi_options():
+def test_ihc_core_markers_are_part_of_pathology_roi_options():
     mapping = yaml.safe_load(
         (ROOT / "knowledge/schema/document_roi_mapping.yaml").read_text(encoding="utf-8")
     )
-    ihc = {region["key"]: region for region in mapping["documents"]["IHC"]["regions"]}
+    assert "IHC" not in mapping["documents"]
+    ihc = {region["key"]: region for region in mapping["documents"]["BIOPSY_PATHOLOGY"]["regions"]}
     for key in ("primary_er", "primary_pr", "primary_her2", "primary_ki67"):
         assert ihc[key]["target_fields"] == [key]
-    labels = {region["label"] for region in mapping["documents"]["IHC"]["regions"]}
+    labels = {region["label"] for region in mapping["documents"]["BIOPSY_PATHOLOGY"]["regions"]}
     assert "ER/PR/HER2/Ki-67面板" not in labels
 
 
@@ -72,28 +73,10 @@ def test_treatment_regimen_and_cycles_are_independent_roi_options():
 
 def test_frontend_runtime_menu_uses_atomic_options_and_removes_composite_labels():
     javascript = (ROOT / "app/static/atomic_roi.js").read_text(encoding="utf-8")
-    assert "Object.assign(roiTypesByDocument, atomic)" in javascript
-    for expected in (
-        '["record_number","病案号"]',
-        '["birth_date","出生日期"]',
-        '["meta_exam_date","检查日期"]',
-        '["meta_treatment_phase","治疗阶段"]',
-        '["primary_er","原发灶ER"]',
-        '["primary_pr","原发灶PR"]',
-        '["primary_her2","原发灶HER2"]',
-        '["primary_ki67","原发灶Ki-67"]',
-        '["postoperative_chemotherapy_regimen","术后化疗方案"]',
-        '["postoperative_chemotherapy_cycles","术后化疗周期"]',
-    ):
-        assert expected in javascript
-    for merged_label in (
-        "病案号与出生日期",
-        "病案号、性别与职业",
-        "检查日期与治疗阶段",
-        "ER/PR/HER2/Ki-67面板",
-        "术后化疗方案与周期",
-    ):
-        assert merged_label not in javascript
+    assert 'fetch("/api/knowledge/document-types")' in javascript
+    assert "document.regions" in javascript
+    assert "Object.assign(roiTypesByDocument, configuredTypes)" in javascript
+    assert "selector.innerHTML = documents" in javascript
 
 
 def test_atomic_roi_override_loads_before_windows_shutdown_early_return():
