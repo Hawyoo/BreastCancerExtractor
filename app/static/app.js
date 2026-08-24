@@ -190,7 +190,7 @@ async function loadPatients() {
     const button = document.createElement("button");
     button.className = `patient-item ${state.patient?.id === patient.id ? "active" : ""}`;
     button.innerHTML = `<strong>${escapeHtml(patient.patient_code)}</strong><small>${patient.document_count} 张脱敏图 · ${statusText(patient.status)}</small><div class="patient-card-dates"><small>创建：${formatPatientDateTime(patient.created_at)}</small><small>修改：${formatPatientDateTime(patient.updated_at)}</small></div>`;
-    button.onclick = () => selectPatient(patient.id);
+    button.onclick = () => selectPatient(patient.id).catch(error=>toast(`无法进入患者：${error.message}`));
     list.appendChild(button);
   }
   updatePatientSidebar();
@@ -940,9 +940,9 @@ async function runOcrQueue(){
       const job=state.processingJobs.find(candidate=>candidate.status==="OCR_QUEUED");if(!job)break;
       try{
         job.status="OCR_RUNNING";job.stage="正在OCR识别";renderProcessingQueue();
-        const forceOcr=job.target==="FULL_REPROCESS";
+        const forceOcr=["FULL_REPROCESS","OCR_REPROCESS"].includes(job.target);
         await api(`/api/documents/${job.documentId}/ocr${forceOcr?"?force=true":""}`,{method:"POST"});
-        if(job.target==="OCR_ONLY"){
+        if(["OCR_ONLY","OCR_REPROCESS"].includes(job.target)){
           job.status="COMPLETED";job.stage="OCR已完成";job.failedStage=null;
         }else{
           job.status="AI_QUEUED";job.stage="OCR已完成，等待AI";job.failedStage=null;

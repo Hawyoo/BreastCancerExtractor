@@ -177,9 +177,19 @@ def test_saved_documents_have_stateful_bulk_ocr_and_ai_action():
     assert 'queueDocuments(documents,"FULL_REPROCESS")' in javascript
     assert 'queueDocuments(needsFull,"FULL")' in javascript
     assert 'queueDocuments(needsAi,"AI_ONLY")' in javascript
-    assert 'job.target==="FULL_REPROCESS"' in javascript
+    assert '["FULL_REPROCESS","OCR_REPROCESS"].includes(job.target)' in javascript
     assert '"?force=true"' in javascript
     assert 'doc.status==="AI_PROCESSED"' in javascript
+
+
+def test_patient_cards_surface_navigation_failures_and_ai_disconnect_uses_current_bulk_button():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    enhancements = (ROOT / "app/static/enhancements.js").read_text(encoding="utf-8")
+    assert 'selectPatient(patient.id).catch(error=>toast(`无法进入患者：${error.message}`))' in javascript
+    assert 'const bulkProcess=$("#bulk-process")' in enhancements
+    assert '$("#bulk-ai").disabled' not in enhancements
+    assert 'job.target === "FULL_REPROCESS"' in enhancements
+    assert 'job.target = "OCR_REPROCESS"' in enhancements
 
 
 def test_review_record_opens_editable_source_image_with_zoom_and_enhancement():
