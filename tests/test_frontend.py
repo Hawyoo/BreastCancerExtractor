@@ -168,15 +168,18 @@ def test_background_pipeline_runs_ocr_before_ai():
     assert "/extract" in javascript[ai_start:end]
 
 
-def test_saved_documents_have_bulk_ocr_and_ai_actions():
+def test_saved_documents_have_stateful_bulk_ocr_and_ai_action():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
-    assert 'id="bulk-ocr"' in html and "一键OCR" in html
-    assert 'id="bulk-ai"' in html and "一键AI提取" in html
-    assert 'queueDocuments(documents,"OCR_ONLY")' in javascript
-    assert 'queueDocuments(documents,"AI_ONLY")' in javascript
-    assert '!doc.ocr&&!activeIds.has(doc.id)' in javascript
-    assert 'doc.ocr&&doc.status!=="AI_PROCESSED"' in javascript
+    assert 'id="bulk-process"' in html
+    assert "一键重新OCR/AI提取" in javascript
+    assert "一键继续重新OCR/AI提取" in javascript
+    assert 'queueDocuments(documents,"FULL_REPROCESS")' in javascript
+    assert 'queueDocuments(needsFull,"FULL")' in javascript
+    assert 'queueDocuments(needsAi,"AI_ONLY")' in javascript
+    assert 'job.target==="FULL_REPROCESS"' in javascript
+    assert '"?force=true"' in javascript
+    assert 'doc.status==="AI_PROCESSED"' in javascript
 
 
 def test_review_record_opens_editable_source_image_with_zoom_and_enhancement():

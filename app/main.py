@@ -1429,10 +1429,13 @@ def delete_document(document_id: str) -> None:
 
 
 @app.post("/api/documents/{document_id}/ocr")
-async def process_document_ocr(document_id: str) -> dict[str, object]:
+async def process_document_ocr(document_id: str, force: bool = False) -> dict[str, object]:
     document = require_document(document_id)
     with connect() as db:
-        if db.execute("SELECT 1 FROM ocr_results WHERE document_id=?", (document_id,)).fetchone():
+        existing_ocr = db.execute(
+            "SELECT engine,version,created_at FROM ocr_results WHERE document_id=?", (document_id,)
+        ).fetchone()
+        if existing_ocr and not force:
             raise HTTPException(status_code=409, detail="当前图片版本已完成OCR；只有修改并覆盖图片后才能重新识别")
     if document_id in _OCR_IN_PROGRESS:
         raise HTTPException(status_code=409, detail="该图片正在进行OCR")
@@ -1443,6 +1446,12 @@ async def process_document_ocr(document_id: str) -> dict[str, object]:
         _OCR_IN_PROGRESS.discard(document_id)
     now = utc_now()
     with connect() as db:
+        invalidated_observations = 0
+        if force and existing_ocr:
+            invalidated_observations = db.execute(
+                "SELECT COUNT(*) FROM observations WHERE document_id=?", (document_id,)
+            ).fetchone()[0]
+            db.execute("DELETE FROM observations WHERE document_id=?", (document_id,))
         db.execute(
             """INSERT INTO ocr_results(document_id,engine,version,full_text,result_json,created_at)
                VALUES(?,?,?,?,?,?) ON CONFLICT(document_id) DO UPDATE SET
@@ -1452,9 +1461,40 @@ async def process_document_ocr(document_id: str) -> dict[str, object]:
              json.dumps(result, ensure_ascii=False), now),
         )
         db.execute("UPDATE documents SET status='OCR_PROCESSED' WHERE id=?", (document_id,))
-        db.execute("UPDATE patients SET updated_at=? WHERE id=?", (now, document["patient_id"]))
+        if force and existing_ocr:
+            db.execute(
+                """INSERT INTO audit_log
+                   (patient_id,document_id,operation,old_value,new_value,operator,reason,timestamp)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (
+                    document["patient_id"], document_id, "USER_REPROCESS_OCR",
+                    json.dumps({"engine": existing_ocr["engine"], "version": existing_ocr["version"]}),
+                    json.dumps({"engine": result["engine"], "version": result.get("version")}),
+                    "local-user", f"一键重新OCR/AI提取；失效字段={invalidated_observations}", now,
+                ),
+            )
+            counts = db.execute(
+                """SELECT COUNT(*) AS total,
+                          SUM(CASE WHEN status='REVIEW_REQUIRED' THEN 1 ELSE 0 END) AS review,
+                          SUM(CASE WHEN status NOT IN ('VERIFIED','SUPERSEDED') THEN 1 ELSE 0 END) AS unverified
+                   FROM observations WHERE patient_id=?""",
+                (document["patient_id"],),
+            ).fetchone()
+            patient_status = (
+                "REVIEW_REQUIRED" if counts["review"] else
+                "AI_PROCESSED" if counts["unverified"] else
+                "VERIFIED" if counts["total"] else "UNPROCESSED"
+            )
+            db.execute(
+                "UPDATE patients SET status=?,updated_at=? WHERE id=?",
+                (patient_status, now, document["patient_id"]),
+            )
+        else:
+            db.execute("UPDATE patients SET updated_at=? WHERE id=?", (now, document["patient_id"]))
     return {"document_id": document_id, "engine": result["engine"], "version": result.get("version"),
-            "full_text": result["full_text"], "line_count": len(result.get("lines", []))}
+            "full_text": result["full_text"], "line_count": len(result.get("lines", [])),
+            "reprocessed": bool(force and existing_ocr),
+            "invalidated_observations": invalidated_observations}
 
 
 @app.post("/api/documents/{document_id}/extract")

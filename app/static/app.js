@@ -940,7 +940,8 @@ async function runOcrQueue(){
       const job=state.processingJobs.find(candidate=>candidate.status==="OCR_QUEUED");if(!job)break;
       try{
         job.status="OCR_RUNNING";job.stage="正在OCR识别";renderProcessingQueue();
-        await api(`/api/documents/${job.documentId}/ocr`,{method:"POST"});
+        const forceOcr=job.target==="FULL_REPROCESS";
+        await api(`/api/documents/${job.documentId}/ocr${forceOcr?"?force=true":""}`,{method:"POST"});
         if(job.target==="OCR_ONLY"){
           job.status="COMPLETED";job.stage="OCR已完成";job.failedStage=null;
         }else{
@@ -1006,25 +1007,43 @@ function queueDocuments(documents,target){
   renderProcessingQueue();runProcessingQueue();
 }
 
-$("#bulk-ocr").onclick=()=>{
-  if(!state.patient)return;
-  const activeIds=new Set(state.processingJobs.filter(job=>!["COMPLETED","FAILED"].includes(job.status)&&job.target!=="AI_ONLY").map(job=>job.documentId));
-  const documents=state.patient.documents.filter(doc=>!doc.ocr&&!activeIds.has(doc.id));
-  if(!documents.length)return toast("没有需要OCR的脱敏图片");
-  queueDocuments(documents,"OCR_ONLY");toast(`已加入 ${documents.length} 张OCR任务`);
-};
+function documentHasAiResult(doc){
+  return doc.status==="AI_PROCESSED";
+}
 
-$("#bulk-ai").onclick=()=>{
+function updateBulkProcessAction(){
+  const button=$("#bulk-process"),documents=state.patient?.documents||[];
+  if(!button)return;
+  const allComplete=documents.length>0&&documents.every(doc=>doc.ocr&&documentHasAiResult(doc));
+  button.textContent=allComplete?"一键重新OCR/AI提取":"一键继续重新OCR/AI提取";
+  button.dataset.mode=allComplete?"REPROCESS":"CONTINUE";
+  button.disabled=!documents.length;
+}
+
+$("#bulk-process").onclick=()=>{
   if(!state.patient)return;
-  const observed=new Set(state.patient.observations.map(observation=>observation.document_id));
-  const activeIds=new Set(state.processingJobs.filter(job=>!["COMPLETED","FAILED"].includes(job.status)&&job.target!=="OCR_ONLY").map(job=>job.documentId));
-  const documents=state.patient.documents.filter(doc=>doc.ocr&&doc.status!=="AI_PROCESSED"&&!observed.has(doc.id)&&!activeIds.has(doc.id));
-  if(!documents.length)return toast("没有可进行AI提取的图片；请先完成OCR");
-  queueDocuments(documents,"AI_ONLY");toast(`已加入 ${documents.length} 张AI提取任务`);
+  const documents=state.patient.documents||[];
+  const activeIds=new Set(state.processingJobs.filter(job=>!["COMPLETED","FAILED"].includes(job.status)).map(job=>job.documentId));
+  const allComplete=documents.length>0&&documents.every(doc=>doc.ocr&&documentHasAiResult(doc));
+  if(allComplete){
+    if(activeIds.size)return toast("已有图片正在后台处理，请完成后再重新提取");
+    if(!confirm("将对全部图片重新OCR和AI提取，旧的页面提取字段会在新OCR成功后失效。是否继续？"))return;
+    queueDocuments(documents,"FULL_REPROCESS");
+    return toast(`已加入 ${documents.length} 张重新OCR/AI提取任务`);
+  }
+  const incomplete=documents.filter(doc=>!activeIds.has(doc.id)&&!(doc.ocr&&documentHasAiResult(doc)));
+  const needsFull=incomplete.filter(doc=>!doc.ocr);
+  const needsAi=incomplete.filter(doc=>doc.ocr&&!documentHasAiResult(doc));
+  if(needsFull.length)queueDocuments(needsFull,"FULL");
+  if(needsAi.length)queueDocuments(needsAi,"AI_ONLY");
+  const queued=needsFull.length+needsAi.length;
+  if(!queued)return toast(activeIds.size?"未完成图片已在后台处理中":"没有需要继续处理的图片");
+  toast(`已继续处理 ${queued} 张图片`);
 };
 
 function renderDocuments() {
   const docs=state.patient?.documents||[]; $("#doc-count").textContent=`${docs.length} 张`; const list=$("#document-list");list.innerHTML="";
+  updateBulkProcessAction();
   if(!docs.length){list.innerHTML='<div class="muted-empty">尚无脱敏图片</div>';return;}
   const aiDocumentIds=new Set((state.patient?.observations||[]).map(observation=>observation.document_id));
   for(const doc of docs){

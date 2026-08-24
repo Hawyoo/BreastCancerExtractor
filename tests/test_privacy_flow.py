@@ -82,6 +82,44 @@ def test_document_ocr_is_persisted(client, monkeypatch):
     assert "只有修改并覆盖图片后" in repeated.json()["detail"]
 
 
+def test_forced_ocr_replaces_results_only_after_success_and_invalidates_page_fields(client, monkeypatch):
+    patient = create_patient(client)
+    uploaded = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("sanitized.png", make_image(), "image/png")},
+        data={"display_name": "入院记录", "document_type": "ADMISSION",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+    results = iter(["首次 OCR", "重新 OCR"])
+
+    async def fake_ocr(_):
+        text = next(results)
+        return {"engine": "PaddleOCR", "version": "test", "full_text": text, "lines": []}
+
+    monkeypatch.setattr("app.main.recognize_image", fake_ocr)
+    assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
+    observation = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "field_name": "smoking", "value": "NO", "confidence": "HIGH",
+            "source_mode": "RECORDED", "document_id": uploaded["id"],
+        },
+    )
+    assert observation.status_code == 201
+
+    reprocessed = client.post(f"/api/documents/{uploaded['id']}/ocr?force=true")
+    assert reprocessed.status_code == 200
+    assert reprocessed.json()["reprocessed"] is True
+    assert reprocessed.json()["invalidated_observations"] == 1
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    assert detail["documents"][0]["ocr"]["full_text"] == "重新 OCR"
+    assert detail["documents"][0]["status"] == "OCR_PROCESSED"
+    assert not any(item.get("document_id") == uploaded["id"] for item in detail["observations"])
+    assert detail["status"] == "UNPROCESSED"
+    assert "USER_REPROCESS_OCR" in [item["operation"] for item in detail["audit_log"]]
+
+
 def test_revising_roi_invalidates_results_and_creates_a_new_ocr_version(client, monkeypatch):
     patient = create_patient(client)
     uploaded = client.post(
