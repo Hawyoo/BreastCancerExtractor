@@ -523,8 +523,9 @@
   function applyAiDisconnected(disconnected) {
     aiDisconnected = Boolean(disconnected);
     document.documentElement.dataset.aiDisconnected = aiDisconnected ? "true" : "false";
-    const bulkProcess=$("#bulk-process");
-    if(bulkProcess)bulkProcess.disabled=aiDisconnected||!(state.patient?.documents||[]).length;
+    const bulkOcr=$("#bulk-ocr"),bulkAi=$("#bulk-ai");
+    if(bulkOcr)bulkOcr.disabled=!(state.patient?.documents||[]).length;
+    if(bulkAi)bulkAi.disabled=aiDisconnected||!(state.patient?.documents||[]).length;
     $("#refresh-models").disabled = aiDisconnected;
     if (aiDisconnected) {
       $("#current-model-status").textContent = "当前模型：AI已断开（仅 OCR）";
@@ -593,7 +594,7 @@
   runProcessingQueue = () => {
     if (aiDisconnected) {
       state.processingJobs = state.processingJobs.filter(job => {
-        if (job.target === "AI_ONLY") { toast("AI已断开：未加入AI任务"); return false; }
+        if (["AI_ONLY", "AI_REPROCESS"].includes(job.target)) { toast("AI已断开：未加入AI任务"); return false; }
         if (job.target === "FULL") job.target = "OCR_ONLY";
         if (job.target === "FULL_REPROCESS") job.target = "OCR_REPROCESS";
         return true;

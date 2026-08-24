@@ -168,16 +168,18 @@ def test_background_pipeline_runs_ocr_before_ai():
     assert "/extract" in javascript[ai_start:end]
 
 
-def test_saved_documents_have_stateful_bulk_ocr_and_ai_action():
+def test_saved_documents_have_independent_stateful_bulk_ocr_and_ai_actions():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
-    assert 'id="bulk-process"' in html
-    assert "一键重新OCR/AI提取" in javascript
-    assert "一键继续重新OCR/AI提取" in javascript
-    assert 'queueDocuments(documents,"FULL_REPROCESS")' in javascript
-    assert 'queueDocuments(needsFull,"FULL")' in javascript
-    assert 'queueDocuments(needsAi,"AI_ONLY")' in javascript
+    assert 'id="bulk-ocr"' in html and 'id="bulk-ai"' in html
+    assert "一键重新OCR" in javascript and "一键继续OCR" in javascript
+    assert "一键重新AI提取" in javascript and "一键继续AI提取" in javascript
+    assert 'queueDocuments(documents,"OCR_REPROCESS")' in javascript
+    assert 'queueDocuments(documents,"AI_REPROCESS")' in javascript
+    assert 'queueDocuments(pending,"OCR_ONLY")' in javascript
+    assert 'queueDocuments(pending,"AI_ONLY")' in javascript
     assert '["FULL_REPROCESS","OCR_REPROCESS"].includes(job.target)' in javascript
+    assert 'job.target==="AI_REPROCESS"' in javascript
     assert '"?force=true"' in javascript
     assert 'doc.status==="AI_PROCESSED"' in javascript
 
@@ -186,10 +188,11 @@ def test_patient_cards_surface_navigation_failures_and_ai_disconnect_uses_curren
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     enhancements = (ROOT / "app/static/enhancements.js").read_text(encoding="utf-8")
     assert 'selectPatient(patient.id).catch(error=>toast(`无法进入患者：${error.message}`))' in javascript
-    assert 'const bulkProcess=$("#bulk-process")' in enhancements
-    assert '$("#bulk-ai").disabled' not in enhancements
+    assert 'const bulkOcr=$("#bulk-ocr"),bulkAi=$("#bulk-ai")' in enhancements
+    assert "bulkOcr.disabled" in enhancements and "bulkAi.disabled=aiDisconnected" in enhancements
     assert 'job.target === "FULL_REPROCESS"' in enhancements
     assert 'job.target = "OCR_REPROCESS"' in enhancements
+    assert '["AI_ONLY", "AI_REPROCESS"].includes(job.target)' in enhancements
 
 
 def test_review_record_opens_editable_source_image_with_zoom_and_enhancement():

@@ -967,7 +967,8 @@ async function runAiQueue(){
         monitorAiProgress(job);
         const fieldOnly=job.target==="FIELD_ONLY";
         const extractionPath=fieldOnly?"/extract-field":"/extract";
-        const extraction=await api(`/api/documents/${job.documentId}${extractionPath}`,{
+        const forceAi=job.target==="AI_REPROCESS";
+        const extraction=await api(`/api/documents/${job.documentId}${extractionPath}${forceAi?"?force=true":""}`,{
           method:"POST",
           ...(fieldOnly?{headers:{"Content-Type":"application/json"},body:JSON.stringify({
             field_name:job.fieldName,region_ids:job.regionIds||[],operator:"local-user",
@@ -976,7 +977,7 @@ async function runAiQueue(){
         job.observationCount=extraction.observation_count||0;job.status="COMPLETED";
         job.resultObservationId=extraction.observation?.id||job.observationId||null;
         job.tokenRate=extraction.performance?.token_rate||job.tokenRate;
-        job.stage=fieldOnly?"当前字段优先提取已完成":(job.target==="AI_ONLY"?"AI提取已完成":"OCR与AI均已完成");
+        job.stage=fieldOnly?"当前字段优先提取已完成":(forceAi?"AI重新提取已完成":(job.target==="AI_ONLY"?"AI提取已完成":"OCR与AI均已完成"));
       }catch(error){
         job.failedStage="AI";job.status="FAILED";job.stage="AI失败";job.error=error.message;
       }
@@ -1000,8 +1001,8 @@ function queueDocuments(documents,target){
   for(const doc of documents){
     state.processingJobs.push({
       id:`${doc.id}-${target}-${Date.now()}`,documentId:doc.id,patientId:state.patient.id,
-      name:doc.display_name,documentType:doc.document_type,target,status:target==="AI_ONLY"?"AI_QUEUED":"OCR_QUEUED",
-      stage:target==="AI_ONLY"?"等待AI":"等待OCR",error:null,observationCount:null,
+      name:doc.display_name,documentType:doc.document_type,target,status:["AI_ONLY","AI_REPROCESS"].includes(target)?"AI_QUEUED":"OCR_QUEUED",
+      stage:["AI_ONLY","AI_REPROCESS"].includes(target)?"等待AI":"等待OCR",error:null,observationCount:null,
     });
   }
   renderProcessingQueue();runProcessingQueue();
@@ -1011,39 +1012,53 @@ function documentHasAiResult(doc){
   return doc.status==="AI_PROCESSED";
 }
 
-function updateBulkProcessAction(){
-  const button=$("#bulk-process"),documents=state.patient?.documents||[];
-  if(!button)return;
-  const allComplete=documents.length>0&&documents.every(doc=>doc.ocr&&documentHasAiResult(doc));
-  button.textContent=allComplete?"一键重新OCR/AI提取":"一键继续重新OCR/AI提取";
-  button.dataset.mode=allComplete?"REPROCESS":"CONTINUE";
-  button.disabled=!documents.length;
+function updateBulkProcessActions(){
+  const ocrButton=$("#bulk-ocr"),aiButton=$("#bulk-ai"),documents=state.patient?.documents||[];
+  const allOcrComplete=documents.length>0&&documents.every(doc=>doc.ocr);
+  const allAiComplete=documents.length>0&&documents.every(doc=>doc.ocr&&documentHasAiResult(doc));
+  ocrButton.textContent=allOcrComplete?"一键重新OCR":"一键继续OCR";
+  ocrButton.dataset.mode=allOcrComplete?"REPROCESS":"CONTINUE";
+  ocrButton.disabled=!documents.length;
+  aiButton.textContent=allAiComplete?"一键重新AI提取":"一键继续AI提取";
+  aiButton.dataset.mode=allAiComplete?"REPROCESS":"CONTINUE";
+  aiButton.disabled=!documents.length;
 }
 
-$("#bulk-process").onclick=()=>{
+$("#bulk-ocr").onclick=()=>{
+  if(!state.patient)return;
+  const documents=state.patient.documents||[];
+  const activeIds=new Set(state.processingJobs.filter(job=>!["COMPLETED","FAILED"].includes(job.status)).map(job=>job.documentId));
+  const allComplete=documents.length>0&&documents.every(doc=>doc.ocr);
+  if(allComplete){
+    if(activeIds.size)return toast("已有图片正在后台处理，请完成后再重新提取");
+    if(!confirm("将对全部图片重新OCR，旧OCR及对应页面字段会在新OCR成功后失效。是否继续？"))return;
+    queueDocuments(documents,"OCR_REPROCESS");
+    return toast(`已加入 ${documents.length} 张重新OCR任务`);
+  }
+  const pending=documents.filter(doc=>!doc.ocr&&!activeIds.has(doc.id));
+  if(!pending.length)return toast(activeIds.size?"未完成OCR的图片已在后台处理中":"没有需要继续OCR的图片");
+  queueDocuments(pending,"OCR_ONLY");toast(`已继续OCR ${pending.length} 张图片`);
+};
+
+$("#bulk-ai").onclick=()=>{
   if(!state.patient)return;
   const documents=state.patient.documents||[];
   const activeIds=new Set(state.processingJobs.filter(job=>!["COMPLETED","FAILED"].includes(job.status)).map(job=>job.documentId));
   const allComplete=documents.length>0&&documents.every(doc=>doc.ocr&&documentHasAiResult(doc));
   if(allComplete){
     if(activeIds.size)return toast("已有图片正在后台处理，请完成后再重新提取");
-    if(!confirm("将对全部图片重新OCR和AI提取，旧的页面提取字段会在新OCR成功后失效。是否继续？"))return;
-    queueDocuments(documents,"FULL_REPROCESS");
-    return toast(`已加入 ${documents.length} 张重新OCR/AI提取任务`);
+    if(!confirm("将复用当前OCR，对全部图片重新进行AI提取；旧的页面AI字段会在新提取成功后失效。是否继续？"))return;
+    queueDocuments(documents,"AI_REPROCESS");
+    return toast(`已加入 ${documents.length} 张重新AI提取任务`);
   }
-  const incomplete=documents.filter(doc=>!activeIds.has(doc.id)&&!(doc.ocr&&documentHasAiResult(doc)));
-  const needsFull=incomplete.filter(doc=>!doc.ocr);
-  const needsAi=incomplete.filter(doc=>doc.ocr&&!documentHasAiResult(doc));
-  if(needsFull.length)queueDocuments(needsFull,"FULL");
-  if(needsAi.length)queueDocuments(needsAi,"AI_ONLY");
-  const queued=needsFull.length+needsAi.length;
-  if(!queued)return toast(activeIds.size?"未完成图片已在后台处理中":"没有需要继续处理的图片");
-  toast(`已继续处理 ${queued} 张图片`);
+  const pending=documents.filter(doc=>doc.ocr&&!documentHasAiResult(doc)&&!activeIds.has(doc.id));
+  if(!pending.length)return toast(documents.some(doc=>!doc.ocr)?"没有可继续AI提取的图片，请先完成OCR":"未完成AI的图片已在后台处理中");
+  queueDocuments(pending,"AI_ONLY");toast(`已继续AI提取 ${pending.length} 张图片`);
 };
 
 function renderDocuments() {
   const docs=state.patient?.documents||[]; $("#doc-count").textContent=`${docs.length} 张`; const list=$("#document-list");list.innerHTML="";
-  updateBulkProcessAction();
+  updateBulkProcessActions();
   if(!docs.length){list.innerHTML='<div class="muted-empty">尚无脱敏图片</div>';return;}
   const aiDocumentIds=new Set((state.patient?.observations||[]).map(observation=>observation.document_id));
   for(const doc of docs){

@@ -1470,7 +1470,7 @@ async def process_document_ocr(document_id: str, force: bool = False) -> dict[st
                     document["patient_id"], document_id, "USER_REPROCESS_OCR",
                     json.dumps({"engine": existing_ocr["engine"], "version": existing_ocr["version"]}),
                     json.dumps({"engine": result["engine"], "version": result.get("version")}),
-                    "local-user", f"一键重新OCR/AI提取；失效字段={invalidated_observations}", now,
+                    "local-user", f"一键重新OCR；失效字段={invalidated_observations}", now,
                 ),
             )
             counts = db.execute(
@@ -1498,7 +1498,7 @@ async def process_document_ocr(document_id: str, force: bool = False) -> dict[st
 
 
 @app.post("/api/documents/{document_id}/extract")
-async def extract_document(document_id: str) -> dict[str, object]:
+async def extract_document(document_id: str, force: bool = False) -> dict[str, object]:
     document = require_document(document_id)
     running = _EXTRACTION_PROGRESS.get(document_id, {}).get("status") == "RUNNING"
     if running:
@@ -1508,7 +1508,7 @@ async def extract_document(document_id: str) -> dict[str, object]:
         existing = db.execute("SELECT COUNT(*) FROM observations WHERE document_id=?", (document_id,)).fetchone()[0]
     if not ocr_row:
         raise HTTPException(status_code=409, detail="请先完成OCR识别")
-    if document["status"] == "AI_PROCESSED" or existing:
+    if (document["status"] == "AI_PROCESSED" or existing) and not force:
         raise HTTPException(status_code=409, detail="当前OCR版本已完成AI提取；只有图片修改并产生新OCR后才能再次提取")
 
     models = await list_extraction_models()
@@ -1593,6 +1593,23 @@ async def extract_document(document_id: str) -> dict[str, object]:
     now = utc_now()
     created: list[dict[str, str]] = []
     with connect() as db:
+        invalidated_observations = 0
+        if force and (document["status"] == "AI_PROCESSED" or existing):
+            invalidated_observations = db.execute(
+                "SELECT COUNT(*) FROM observations WHERE document_id=?", (document_id,)
+            ).fetchone()[0]
+            db.execute("DELETE FROM observations WHERE document_id=?", (document_id,))
+            db.execute(
+                """INSERT INTO audit_log
+                   (patient_id,document_id,operation,old_value,new_value,operator,reason,timestamp)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (
+                    document["patient_id"], document_id, "USER_REPROCESS_AI",
+                    json.dumps({"invalidated_observations": invalidated_observations}),
+                    json.dumps({"model": model_name, "model_digest": model_digest}),
+                    "local-user", "一键重新AI提取，复用当前OCR", now,
+                ),
+            )
         seen_fields: set[str] = set()
         for item in result.get("observations", []):
             field_name = item.get("field_name")
@@ -1732,6 +1749,8 @@ async def extract_document(document_id: str) -> dict[str, object]:
     )
     return {"document_id": document_id, "model": model_name, "model_digest": model_digest,
             "observation_count": len(created), "observations": created,
+            "reprocessed": bool(force and (document["status"] == "AI_PROCESSED" or existing)),
+            "invalidated_observations": invalidated_observations,
             "performance": {"eval_count": eval_count, "token_rate": round(token_rate, 2)}}
 
 

@@ -147,6 +147,15 @@ def test_revising_roi_invalidates_results_and_creates_a_new_ocr_version(client, 
     assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
     assert client.post(f"/api/documents/{uploaded['id']}/extract").status_code == 200
     assert client.post(f"/api/documents/{uploaded['id']}/extract").status_code == 409
+    before_reprocess = client.get(f"/api/patients/{patient['id']}").json()["observations"][0]["id"]
+    reprocessed_ai = client.post(f"/api/documents/{uploaded['id']}/extract?force=true")
+    assert reprocessed_ai.status_code == 200
+    assert reprocessed_ai.json()["reprocessed"] is True
+    assert reprocessed_ai.json()["invalidated_observations"] == 1
+    after_reprocess = client.get(f"/api/patients/{patient['id']}").json()
+    assert len(after_reprocess["observations"]) == 1
+    assert after_reprocess["observations"][0]["id"] != before_reprocess
+    assert "USER_REPROCESS_AI" in [item["operation"] for item in after_reprocess["audit_log"]]
 
     unchanged = client.put(
         f"/api/documents/{uploaded['id']}",
