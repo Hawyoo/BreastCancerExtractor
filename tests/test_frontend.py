@@ -185,7 +185,8 @@ def test_review_record_opens_editable_source_image_with_zoom_and_enhancement():
     assert "原图只会在此处本地显示" not in html
     assert 'id="zoom-out"' in html and 'id="zoom-in"' in html and 'id="zoom-fit"' in html
     assert "chooseObservation(obs)" in javascript
-    assert "openSavedDocumentPreview(observation.document_id,observation.id)" in javascript
+    assert "const documentId=reviewDocumentId(observation)" in javascript
+    assert "openSavedDocumentPreview(documentId,observation.id)" in javascript
     assert "state.editingDocumentId=doc.id" in javascript
     assert "doc.regions||[]" in javascript
     assert "保存修改并重新识别" in javascript
@@ -304,6 +305,8 @@ def test_review_navigation_groups_by_source_without_changing_display_field_order
     assert 'id="review-field-key"' in html
     assert "function fieldOrderedObservations()" in javascript
     assert "function orderedObservations()" in javascript
+    assert "documentOrder.get(reviewDocumentId(left))" in javascript
+    assert "const documentId=reviewDocumentId(observation)" in javascript
     assert "const documentOrder=new Map" in javascript
     assert 'left.status==="VERIFIED"' in javascript
     assert "left.field_order" in javascript

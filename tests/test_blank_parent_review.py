@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.main import suggested_review_document_id
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -88,6 +90,21 @@ def test_frontend_supports_virtual_blank_parent_review_records():
     assert 'raw_text:value?"人工手动补充":"人工明确留空"' in javascript
     assert "if(existing&&!existing.virtual_missing)" in javascript
     assert 'obs.status==="VERIFIED"?"已确认留空":"待人工填写或确认留空"' in javascript
-    assert "if(observation.document_id)" in javascript
+    assert "function reviewDocumentId(observation)" in javascript
+    assert "observation?.document_id||observation?.review_document_id" in javascript
+    assert "document_id:reviewDocumentId(observation)" in javascript
     assert "const selectedFieldName=" in javascript
     assert "item=>item.field_name===selectedFieldName" in javascript
+
+
+def test_missing_fields_receive_the_first_matching_review_page_in_patient_order():
+    documents = [
+        {"id": "admission-1", "document_type": "ADMISSION"},
+        {"id": "ultrasound-1", "document_type": "ULTRASOUND"},
+        {"id": "ultrasound-2", "document_type": "ULTRASOUND"},
+    ]
+
+    assert suggested_review_document_id("sex", documents) == "admission-1"
+    assert suggested_review_document_id("pre_us_tumor_size_mm", documents) == "ultrasound-1"
+    assert suggested_review_document_id("unknown_custom_field", documents) == "admission-1"
+    assert suggested_review_document_id("sex", []) is None

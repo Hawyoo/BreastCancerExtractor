@@ -1154,7 +1154,7 @@ function updateReviewPositioningTools(){
   tools.hidden=!(state.reviewMode&&observation&&docs.length);
   if(tools.hidden)return;
   const select=$("#review-document-select");
-  const activeId=state.editingDocumentId||observation.document_id||docs[0].id;
+  const activeId=state.editingDocumentId||reviewDocumentId(observation)||docs[0].id;
   if(docs.some(doc=>doc.id===activeId))select.value=activeId;
   const index=docs.findIndex(doc=>doc.id===select.value);
   $("#review-document-previous").disabled=index<=0;
@@ -1301,6 +1301,12 @@ function selectedObservation() {
   return (state.patient?.observations||[]).find(item=>item.id===state.selectedObservationId)||null;
 }
 
+function reviewDocumentId(observation) {
+  const docs=state.patient?.documents||[];
+  const preferred=observation?.document_id||observation?.review_document_id;
+  return docs.some(doc=>doc.id===preferred)?preferred:(docs[0]?.id||null);
+}
+
 function fieldOrderedObservations() {
   return [...(state.patient?.observations||[])]
     .filter(item=>item.status!=="SUPERSEDED")
@@ -1319,8 +1325,8 @@ function orderedObservations() {
   return fieldOrderedObservations().sort((left,right)=>{
     const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
     if(reviewGroup!==0)return reviewGroup;
-    const sourceOrder=(documentOrder.get(left.document_id)??Number.MAX_SAFE_INTEGER)
-      -(documentOrder.get(right.document_id)??Number.MAX_SAFE_INTEGER);
+    const sourceOrder=(documentOrder.get(reviewDocumentId(left))??Number.MAX_SAFE_INTEGER)
+      -(documentOrder.get(reviewDocumentId(right))??Number.MAX_SAFE_INTEGER);
     if(sourceOrder!==0)return sourceOrder;
     return (Number(left.field_order)||0)-(Number(right.field_order)||0);
   });
@@ -1517,8 +1523,9 @@ async function chooseObservation(observation) {
   state.selectedObservationId=observation.id;
   state.reviewCandidateObservationId=observation.id;
   renderFieldReview();renderObservations();
-  if(observation.document_id){
-    await openSavedDocumentPreview(observation.document_id,observation.id);
+  const documentId=reviewDocumentId(observation);
+  if(documentId){
+    await openSavedDocumentPreview(documentId,observation.id);
   }else{
     clearEditor();
     updateReviewPositioningTools();
@@ -1580,6 +1587,7 @@ async function persistReviewObservationValue(observation,value,reason) {
         raw_text:value?"人工手动补充":"人工明确留空",
         confidence:"LOW",
         source_mode:"RECORDED",
+        document_id:reviewDocumentId(observation),
         operator:"local-user",
         reason,
       }),

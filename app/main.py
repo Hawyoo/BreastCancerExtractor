@@ -19,6 +19,7 @@ from app.db import connect, init_db, rows_as_dicts, utc_now
 from app.derived_fields import MEASUREMENT_SOURCE_FIELDS, TNM_SOURCE_FIELDS, refresh_derived_observations
 from app.knowledge import (
     document_roi_catalog,
+    document_target_fields,
     extraction_prompt,
     questionnaire_catalog,
     questionnaire_field_index,
@@ -795,6 +796,14 @@ def delete_patient(patient_id: int) -> None:
         _OCR_IN_PROGRESS.discard(document_id)
 
 
+def suggested_review_document_id(field_name: str, documents: list[dict[str, object]]) -> str | None:
+    """Choose the first patient page on which this field is eligible for extraction."""
+    for document in documents:
+        if field_name in document_target_fields(str(document.get("document_type") or "OTHER")):
+            return str(document["id"])
+    return str(documents[0]["id"]) if documents else None
+
+
 @app.get("/api/patients/{patient_id}")
 def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str, object]:
     patient = require_patient(patient_id)
@@ -898,6 +907,7 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                     "id": f"blank-parent:{patient_id}:{field_name}",
                     "patient_id": patient_id,
                     "document_id": None,
+                    "review_document_id": suggested_review_document_id(field_name, documents),
                     "region_id": None,
                     "field_name": field_name,
                     "ai_value": "",
