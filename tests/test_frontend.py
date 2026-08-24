@@ -292,7 +292,8 @@ def test_conflict_image_selects_its_candidate_value_and_source_page():
         javascript.index("function renderConflictEvidence") : javascript.index("async function chooseObservation")
     ]
     assert "state.reviewCandidateObservationId=candidate.id" in conflict_handler
-    assert '$("#review-current-value").value=candidate.value??""' in conflict_handler
+    assert 'valueField.value=candidate.value??""' in conflict_handler
+    assert 'valueField.dispatchEvent(new Event("input",{bubbles:true}))' in conflict_handler
     assert "openSavedDocumentPreview(candidate.document_id,observation.id)" in conflict_handler
     assert "candidate.raw_text" in conflict_handler
     assert "candidate.confidence" in conflict_handler

@@ -1558,7 +1558,12 @@ function renderConflictEvidence(observation) {
     button.innerHTML=`<img src="/api/documents/${encodeURIComponent(candidate.document_id)}/image" alt="${escapeHtml(candidate.source)}"><span><strong>${escapeHtml(candidate.value)}</strong><small>${escapeHtml(shortcut+candidate.source+confidence)}</small>${candidate.raw_text?`<em>${escapeHtml(candidate.raw_text)}</em>`:""}</span>`;
     button.onclick=()=>{
       state.reviewCandidateObservationId=candidate.id;
-      $("#review-current-value").value=candidate.value??"";
+      const valueField=$("#review-current-value");
+      valueField.value=candidate.value??"";
+      // Programmatic value changes do not emit input events. Reuse the same
+      // path as manual editing so drafts, conditional fields, and format
+      // validation all inspect the newly selected candidate immediately.
+      valueField.dispatchEvent(new Event("input",{bubbles:true}));
       renderReviewChoices(observation);
       container.querySelectorAll(".conflict-evidence-card").forEach(item=>item.classList.toggle("active",item===button));
       openSavedDocumentPreview(candidate.document_id,observation.id).catch(error=>toast(error.message));
