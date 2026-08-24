@@ -1235,8 +1235,9 @@ async function saveCurrentReviewLocation(requireActive=true){
   if(!observation||!document)throw new Error("请先选择复核字段和资料图片");
   if(requireActive&&!roi)throw new Error("请先使用“文本定位”框选当前字段的证据文字");
   if(!roi)return {document,regionIds:[]};
-  const targetId=state.reviewCandidateObservationId||observation.id;
-  const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
+  const candidate=(observation.candidate_values||[]).find(item=>item.id===state.reviewCandidateObservationId);
+  const targetId=candidate?.id||observation.id;
+  state.reviewCandidateObservationId=targetId;
   const replacedRegionIds=new Set([observation.region_id,candidate?.region_id].filter(Boolean));
   const result=await api(`/api/observations/${targetId}/evidence-location`,{
     method:"PUT",headers:{"Content-Type":"application/json"},
@@ -1264,11 +1265,13 @@ $("#review-document-next").onclick=()=>{
 };
 $("#delete-review-position").onclick=async()=>{
   const observation=selectedObservation();if(!observation)return;
-  const targetId=state.reviewCandidateObservationId||observation.id;
-  const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
+  const candidate=(observation.candidate_values||[]).find(item=>item.id===state.reviewCandidateObservationId);
+  const targetId=candidate?.id||observation.id;
   const removedRegionIds=new Set([observation.region_id,candidate?.region_id].filter(Boolean));
   try{
-    await api(`/api/observations/${targetId}/evidence-location`,{method:"DELETE"});
+    if(!observation.virtual_missing&&removedRegionIds.size){
+      await api(`/api/observations/${targetId}/evidence-location`,{method:"DELETE"});
+    }
     for(const doc of state.patient.documents||[])doc.regions=(doc.regions||[]).filter(item=>!removedRegionIds.has(item.id));
     if(removedRegionIds.has(observation.region_id))observation.region_id=null;
     if(candidate&&removedRegionIds.has(candidate.region_id))candidate.region_id=null;
@@ -1278,12 +1281,15 @@ $("#delete-review-position").onclick=async()=>{
   }catch(error){toast(error.message);}
 };
 $("#reextract-review-field").onclick=async()=>{
-  const observation=selectedObservation();
+  let observation=selectedObservation();
   if(!observation)return;
   if(isDerivedReviewField(observation.field_name))return toast("自动整理字段不能单独重新提取，请重新提取对应的完整主字段");
   captureCurrentReviewDraft();
   const button=$("#reextract-review-field");button.disabled=true;
   try{
+    observation=await materializeVirtualObservation(
+      observation,$("#review-current-value").value.trim(),"人工框选定位后重新提取"
+    );
     const {document,regionIds}=await saveCurrentReviewLocation();
     if(!document.ocr)throw new Error("当前图片尚未完成整页OCR，请先运行OCR识别");
     queuePriorityFieldExtraction(document,observation,regionIds);
@@ -1549,15 +1555,6 @@ $("#review-clear-location").onclick=()=>{
   if(!state.reviewMode)return;
   state.rois=[];state.activeRoiIndex=-1;state.drawing=null;state.reviewLocationDirty=true;
   $("#editor-help").textContent="当前字段定位已清除；可重新框选。";draw();updateReviewPositioningTools();
-};
-
-$("#review-save-location").onclick=async(event)=>{
-  const button=event.currentTarget;button.disabled=true;
-  try{
-    await saveCurrentReviewLocation();
-    toast("当前字段定位已保存");
-  }catch(error){toast(error.message);}
-  finally{button.disabled=false;}
 };
 
 function nextUnverifiedObservation(afterId) {

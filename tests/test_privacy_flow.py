@@ -216,17 +216,24 @@ def test_manual_position_reextracts_only_current_field(client, monkeypatch):
     monkeypatch.setattr("app.main.list_extraction_models", fake_models)
     monkeypatch.setattr("app.main.extract_structured", fake_extract)
     assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
+    materialized = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "field_name": "primary_her2",
+            "value": "",
+            "confidence": "LOW",
+            "source_mode": "RECORDED",
+            "operator": "local-user",
+        },
+    ).json()
     saved = client.put(
-        f"/api/documents/{uploaded['id']}/text-regions",
-        json={"regions": [{
-            "region_type": "FIELD_EVIDENCE", "label": "primary_her2",
-            "x": 1, "y": 5, "width": 21, "height": 8,
-        }]},
+        f"/api/observations/{materialized['id']}/evidence-location",
+        json={"document_id": uploaded["id"], "x": 1, "y": 5, "width": 21, "height": 8},
     ).json()
 
     extracted = client.post(
         f"/api/documents/{uploaded['id']}/extract-field",
-        json={"field_name": "primary_her2", "region_ids": [saved["regions"][0]["id"]]},
+        json={"field_name": "primary_her2", "region_ids": [saved["region"]["id"]]},
     )
     assert extracted.status_code == 200, extracted.text
     assert extracted.json()["observation"]["value"] == "2+"
@@ -239,6 +246,7 @@ def test_manual_position_reextracts_only_current_field(client, monkeypatch):
     detail = client.get(f"/api/patients/{patient['id']}").json()
     assert detail["documents"][0]["ocr"]["full_text"] == "ER 90%\nHER-2：2+"
     assert len(detail["observations"]) == 1
+    assert detail["observations"][0]["id"] == materialized["id"]
     assert detail["observations"][0]["field_name"] == "primary_her2"
     assert detail["observations"][0]["current_value"] == "2+"
     assert detail["audit_log"][0]["operation"] == "AI_REEXTRACT_FIELD"

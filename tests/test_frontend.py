@@ -258,7 +258,9 @@ def test_review_uses_an_independent_single_field_location_toolbar():
     assert 'id="review-evidence-workspace"' in html
     assert 'id="review-document-select"' in html
     assert 'id="review-draw-location"' in html
-    assert 'id="review-save-location"' in html
+    assert 'id="review-save-location"' not in html
+    assert 'id="reextract-review-field"' in html
+    assert "保存定位并重新提取当前字段" in html
     assert '$(".editor-toolbar").hidden=active' in javascript
     assert '$(".import-options").hidden=active' in javascript
     assert "selector.innerHTML=(state.patient?.documents||[]).map" in javascript

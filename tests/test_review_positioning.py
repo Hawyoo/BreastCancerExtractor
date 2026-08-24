@@ -23,15 +23,26 @@ def test_review_can_switch_patient_images_without_losing_field_or_region_drafts(
 def test_current_field_reextract_uses_saved_position_and_priority_queue():
     script = _app_script()
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
-    assert 'id="review-save-location"' in html
+    assert 'id="review-save-location"' not in html
     assert 'id="delete-review-position"' in html
     assert 'id="reextract-review-field"' in html
+    assert "保存定位并重新提取当前字段" in html
     assert "/evidence-location" in script
     assert "saveCurrentReviewLocation()" in script
     assert 'target:"FIELD_ONLY"' in script
     assert 'state.processingJobs.unshift({' in script
     assert 'fieldOnly?"/extract-field":"/extract"' in script
     assert "field_name:job.fieldName,region_ids:job.regionIds||[]" in script
+
+
+def test_virtual_review_field_is_materialized_before_position_save_and_reextract():
+    script = _app_script()
+    handler = script[
+        script.index('$("#reextract-review-field").onclick') : script.index("function selectedObservation")
+    ]
+    assert "observation=await materializeVirtualObservation(" in handler
+    assert handler.index("materializeVirtualObservation(") < handler.index("saveCurrentReviewLocation()")
+    assert "const targetId=candidate?.id||observation.id" in script
 
 
 def test_derived_readonly_fields_cannot_enter_field_reextract_queue():
