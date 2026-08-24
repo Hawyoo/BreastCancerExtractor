@@ -144,10 +144,23 @@ def _find_free_tcp_port(host: str) -> int:
 
 def _resolve_ocr_port() -> int:
     configured = os.getenv("BCE_OCR_PORT")
-    if configured:
-        return int(configured)
-    if _port_bindable(APP_HOST, DEFAULT_OCR_PORT):
-        return DEFAULT_OCR_PORT
+    preferred_port = int(configured) if configured else DEFAULT_OCR_PORT
+    if _url_available(f"http://{APP_HOST}:{preferred_port}/health"):
+        return preferred_port
+    if _port_bindable(APP_HOST, preferred_port):
+        return preferred_port
+    return _find_free_tcp_port(APP_HOST)
+
+
+def _resolve_app_port(preferred_port: int) -> int:
+    """Keep the requested port when possible, otherwise avoid OS-reserved ports.
+
+    A Windows excluded port range rejects ``bind`` even though no process is
+    listening, so a connect-only occupancy check cannot distinguish it from a
+    genuinely free port.
+    """
+    if _port_bindable(APP_HOST, preferred_port):
+        return preferred_port
     return _find_free_tcp_port(APP_HOST)
 
 
@@ -472,8 +485,12 @@ def run_launcher(port: int) -> int:
     if _url_available(f"{app_url}/api/health"):
         webbrowser.open(_browser_control_url(app_url, _load_control_state(root)))
         return 0
-    if _port_available(APP_HOST, port):
-        raise RuntimeError(f"端口 {port} 已被其他程序占用")
+
+    requested_port = port
+    port = _resolve_app_port(requested_port)
+    if port != requested_port:
+        print(f"主程序端口 {requested_port} 无法绑定，已自动切换到 {port}。")
+    app_url = f"http://{APP_HOST}:{port}"
 
     job = _WindowsKillOnCloseJob()
     ocr_process: subprocess.Popen | None = None
