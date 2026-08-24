@@ -54,7 +54,7 @@
               <button id="import-text-learning" class="tool" type="button">导入学习 JSON</button>
               <input id="import-text-learning-file" type="file" accept=".json,application/json" hidden>
             </div>
-            <small id="text-learning-status" class="text-learning-status" role="status" aria-live="polite">学习样例：读取中…</small>
+            <small id="text-learning-status" class="text-learning-status" role="status" aria-live="polite">字段规则：读取中…</small>
           </section>
           <div id="patient-list" class="patient-list"></div>
           <section id="patient-package-panel" class="patient-package-panel" hidden>
@@ -98,6 +98,7 @@
           <div id="review-inference-basis" class="review-inference-basis" hidden></div>
           <label id="review-current-value-label">当前值<textarea id="review-current-value" rows="3"></textarea></label>
           <div id="review-choice-options" class="review-choice-options" hidden></div>
+          <div id="review-conditional-followups" class="review-conditional-followups" hidden></div>
           <div id="review-field-meta" class="review-field-meta"></div>
           <label>修改备注<textarea id="review-note" rows="2" placeholder="例如：对照原图修正"></textarea></label>
         </section>
@@ -136,7 +137,7 @@
           <div class="editor-toolbar">
             <button data-mode="crop" class="tool active" disabled>裁剪</button>
             <button data-mode="redact" class="tool" disabled>实心遮盖</button>
-            <button data-mode="roi" class="tool" disabled>信息框 ROI</button>
+            <button data-mode="roi" class="tool" disabled>文本定位</button>
             <button id="undo" class="tool" disabled>撤销</button>
             <button id="reset-editor" class="tool" disabled>重置</button>
             <div class="preview-zoom-controls" aria-label="图片缩放">
@@ -160,9 +161,13 @@
                 <span class="eyebrow">字段定位</span>
                 <strong id="review-location-field"></strong>
               </div>
-              <label>选择该患者的页面
-                <select id="review-document-select"></select>
-              </label>
+              <div class="review-document-switcher">
+                <button id="review-document-previous" class="tool" type="button" aria-label="上一张患者资料">←</button>
+                <label>选择该患者的页面
+                  <select id="review-document-select"></select>
+                </label>
+                <button id="review-document-next" class="tool" type="button" aria-label="下一张患者资料">→</button>
+              </div>
               <button id="review-draw-location" class="tool" type="button">框选当前字段</button>
               <button id="review-clear-location" class="tool" type="button">清除定位</button>
               <button id="review-save-location" class="primary" type="button">保存定位</button>
@@ -174,6 +179,14 @@
                 <span class="review-shortcut-hint">Ctrl+Enter 确认 · Ctrl+S 保存字段 · Ctrl+数字 选冲突结果</span>
               </div>
             </div>
+            <section id="review-positioning-tools" class="review-positioning-tools">
+            <div class="review-positioning-actions">
+              <button id="delete-review-position" class="tool danger" type="button">删除当前定位</button>
+              <button id="reextract-review-field" class="primary" type="button">按此定位重新提取当前字段</button>
+            </div>
+            <small id="review-positioning-status">可切换任意患者资料，框选后优先重新提取当前字段。</small>
+            </section>
+
             <section id="conflict-evidence-gallery" class="conflict-evidence-gallery" hidden>
               <div class="panel-title"><h3>冲突来源图片</h3><span>点击图片即选择该结果，并在下方打开来源页</span></div>
               <div id="conflict-evidence-images" class="conflict-evidence-images"></div>

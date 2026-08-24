@@ -33,11 +33,18 @@ def test_patient_sort_defaults_to_recently_modified_and_persists_choice():
 
 def test_patient_cards_show_created_and_modified_times_and_total_count():
     script = _sort_script()
+    app_script = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert "patient.created_at" in script
     assert "patient.updated_at" in script
-    assert "添加 ${formatDateTime(patient.created_at)}" in script
-    assert "修改 ${formatDateTime(patient.updated_at)}" in script
+    assert "<small>创建：${formatDateTime(patient.created_at)}</small>" in script
+    assert "<small>修改：${formatDateTime(patient.updated_at)}</small>" in script
+    assert ".patient-card-dates small{display:block;width:100%" in script
+    assert "text-overflow:clip" in script
     assert "共 ${patients.length} 人" in script
+    assert "创建：${formatPatientDateTime(patient.created_at)}" in app_script
+    assert "修改：${formatPatientDateTime(patient.updated_at)}" in app_script
+    assert 'new CustomEvent("bce:patients-rendered"' in app_script
+    assert 'window.addEventListener("bce:patients-rendered", applyPatientSort)' in script
 
 
 def test_patient_sort_reorders_existing_cards_without_changing_patient_api():

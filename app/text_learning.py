@@ -5,9 +5,9 @@ import json
 import re
 import sqlite3
 from collections import Counter
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from app.config import settings
 from app.db import connect
@@ -15,11 +15,21 @@ from app.derived_fields import is_derived_field
 
 LEARNING_EXCLUDED_FIELDS = {"record_number", "contact"}
 _IMPORTED_FILENAME = "imported_text_learning.json"
+_PROMPT_INDEX_FILENAME = "text_learning_prompt_index.json"
 _FIELD_KEY = re.compile(r"^[A-Za-z0-9_]{1,128}$")
 _MAX_TEXT = 4000
 _MAX_REASON = 1200
 _MAX_COUNT = 1_000_000
 _MANUAL_FILL_MARKER = "人工手动补充"
+_PROMPT_INDEX_CACHE: dict[str, dict[str, object]] = {}
+_EVIDENCE_SIGNAL_TERMS = (
+    "阳性", "阴性", "弱阳性", "强阳性", "评分", "染色", "表达", "指数", "百分比",
+    "扩增", "未扩增", "突变", "野生型", "大小", "直径", "长径", "分期", "转移",
+    "淋巴结", "病灶", "诊断", "术后", "月经", "绝经", "初潮", "生育", "哺乳",
+    "家族史", "高血压", "糖尿病", "吸烟", "饮酒", "化疗", "放疗", "内分泌",
+    "靶向", "用药", "剂量", "疗程", "日期", "时间", "部位", "左侧", "右侧",
+    "双侧", "浸润", "原位", "分化", "组织学", "切缘", "神经", "脉管",
+)
 
 
 def _clean(value: object, *, limit: int = _MAX_TEXT) -> str:
@@ -60,6 +70,10 @@ def _imported_path() -> Path:
     return settings.data_path / "learning" / _IMPORTED_FILENAME
 
 
+def _prompt_index_path() -> Path:
+    return settings.data_path / "learning" / _PROMPT_INDEX_FILENAME
+
+
 def _empty_imported_store() -> dict[str, object]:
     return {
         "version": 2,
@@ -89,6 +103,45 @@ def _write_imported_store(payload: dict[str, object]) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def _empty_prompt_index() -> dict[str, object]:
+    return {
+        "version": 1,
+        "type": "bce_text_learning_prompt_index",
+        "generated_at": "",
+        "source_count": 0,
+        "field_count": 0,
+        "fields": [],
+    }
+
+
+def _read_prompt_index() -> dict[str, object]:
+    path = _prompt_index_path()
+    cache_key = str(path.resolve())
+    cached = _PROMPT_INDEX_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    if not path.is_file():
+        payload = _empty_prompt_index()
+    else:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            payload = _empty_prompt_index()
+        if not isinstance(payload, dict) or not isinstance(payload.get("fields"), list):
+            payload = _empty_prompt_index()
+    _PROMPT_INDEX_CACHE[cache_key] = payload
+    return payload
+
+
+def _write_prompt_index(payload: dict[str, object]) -> None:
+    path = _prompt_index_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+    _PROMPT_INDEX_CACHE[str(path.resolve())] = payload
 
 
 def _normalize_for_match(value: object) -> str:
@@ -376,7 +429,8 @@ def _normalize_example(field_name: str, raw: object) -> dict[str, object] | None
         "document_type": _clean(raw.get("document_type"), limit=128) or "OTHER",
         "ai_value": ai_value,
         "verified_value": verified_value,
-        "value_changed": bool(raw.get("value_changed")) or bool(ai_value and verified_value and ai_value != verified_value),
+        "value_changed": bool(raw.get("value_changed"))
+        or bool(ai_value and verified_value and ai_value != verified_value),
         "human_verified": bool(raw.get("human_verified", True)),
         "correction_reason": reason,
         "learning_weight": round(learning_weight, 2),
@@ -768,8 +822,144 @@ def _local_learning_fields() -> list[dict[str, object]]:
     return result
 
 
+def _evidence_signals(text: str) -> set[str]:
+    signals = {term for term in _EVIDENCE_SIGNAL_TERMS if term in text}
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9]*(?:[-/.][A-Za-z0-9]+)*\+?", text):
+        normalized = token.upper()
+        if 2 <= len(normalized) <= 32 and normalized not in {"HTTP", "HTTPS", "WWW"}:
+            signals.add(normalized)
+    for unit in re.findall(r"%|％|\b(?:MM|CM|MG|ML|NG)\b", text, flags=re.IGNORECASE):
+        signals.add(unit.upper().replace("％", "%"))
+    return signals
+
+
+def _compile_field_prompt(field: dict[str, object]) -> dict[str, object] | None:
+    field_name = _clean(field.get("field_name"), limit=128)
+    if not _field_is_learnable(field_name, None):
+        return None
+
+    correction_rules: dict[tuple[str, str, str], int] = {}
+    for correction in field.get("corrections") or []:
+        if not isinstance(correction, dict):
+            continue
+        old_value = _clean(correction.get("from"))
+        new_value = _clean(correction.get("to"))
+        reason = _clean(correction.get("reason"), limit=_MAX_REASON)
+        if not new_value or old_value == new_value:
+            continue
+        key = (old_value, new_value, reason)
+        correction_rules[key] = max(correction_rules.get(key, 0), _safe_count(correction.get("count")))
+
+    review_rules: Counter[str] = Counter()
+    document_types: Counter[str] = Counter()
+    evidence_signals: Counter[str] = Counter()
+    reviewed_count = 0
+    positioned_count = 0
+    for raw_example in field.get("examples") or []:
+        example = _normalize_example(field_name, raw_example)
+        if example is None or not bool(example.get("human_verified")):
+            continue
+        reviewed_count += 1
+        old_value = _clean(example.get("ai_value"))
+        new_value = _clean(example.get("verified_value"))
+        reason = _clean(example.get("correction_reason"), limit=_MAX_REASON)
+        if reason:
+            review_rules[reason] += 1
+        if old_value and new_value and old_value != new_value:
+            key = (old_value, new_value, reason)
+            correction_rules[key] = max(correction_rules.get(key, 0), 1)
+
+        if bool(example.get("evidence_rejected")):
+            continue
+        evidence = example.get("evidence") if isinstance(example.get("evidence"), dict) else {}
+        evidence_text = _clean(evidence.get("text") if isinstance(evidence, dict) else "")
+        if not evidence_text:
+            continue
+        positioned_count += 1
+        document_type = _clean(example.get("document_type"), limit=128)
+        if document_type and document_type != "OTHER":
+            document_types[document_type] += 1
+        for signal in _evidence_signals(evidence_text):
+            evidence_signals[signal] += 1
+
+    filling_rules = [
+        {
+            "when_candidate_is": old_value,
+            "fill_as": new_value,
+            **({"reason": reason} if reason else {}),
+            "support_count": count,
+        }
+        for (old_value, new_value, reason), count in sorted(
+            correction_rules.items(), key=lambda item: (-item[1], item[0])
+        )
+    ]
+    learned_review_rules = [
+        {"rule": rule, "support_count": count}
+        for rule, count in sorted(review_rules.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    cues = [
+        {"text": signal, "support_count": count}
+        for signal, count in sorted(evidence_signals.items(), key=lambda item: (-item[1], item[0]))[:20]
+    ]
+    source_documents = [
+        {"document_type": document_type, "support_count": count}
+        for document_type, count in sorted(document_types.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    if not filling_rules and not learned_review_rules and not cues:
+        return None
+    return {
+        "field_name": field_name,
+        "label": _clean(field.get("label"), limit=200) or field_name,
+        "reviewed_record_count": reviewed_count,
+        "positioned_record_count": positioned_count,
+        "filling_rules": filling_rules,
+        "review_rules": learned_review_rules,
+        "positioning": {
+            "evidence_cues": cues,
+            "source_document_types": source_documents,
+            "rule": (
+                "只在当前OCR中查找字段相关名称和上述证据线索；优先选择同时包含明确结果、"
+                "数值、单位或状态的最小充分原文，不要选择仅提及项目、病史或检查建议但没有结果的语句。"
+            ),
+        },
+    }
+
+
+def _build_prompt_index(store: dict[str, object]) -> dict[str, object]:
+    fields = store.get("fields") if isinstance(store.get("fields"), list) else []
+    compiled = [
+        field_prompt
+        for field in fields
+        if isinstance(field, dict) and (field_prompt := _compile_field_prompt(field)) is not None
+    ]
+    compiled.sort(key=lambda item: str(item.get("field_name") or ""))
+    sources = store.get("sources") if isinstance(store.get("sources"), list) else []
+    return {
+        "version": 1,
+        "type": "bce_text_learning_prompt_index",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "source_count": len(sources),
+        "field_count": len(compiled),
+        "fields": compiled,
+        "policy": {
+            "generated_only_when_learning_json_is_imported": True,
+            "runtime_contains_patient_examples": False,
+            "runtime_contains_ocr_coordinates": False,
+            "require_current_ocr_evidence": True,
+        },
+    }
+
+
+def _rebuild_prompt_index(store: dict[str, object]) -> dict[str, object]:
+    index = _build_prompt_index(store)
+    _write_prompt_index(index)
+    return index
+
+
 def imported_text_learning_status() -> dict[str, object]:
     store = _read_imported_store()
+    prompt_index = _read_prompt_index()
     fields = store.get("fields") if isinstance(store.get("fields"), list) else []
     sources = store.get("sources") if isinstance(store.get("sources"), list) else []
     return {
@@ -785,6 +975,8 @@ def imported_text_learning_status() -> dict[str, object]:
             len(field.get("examples") or []) for field in fields if isinstance(field, dict)
         ),
         "storage": f"database/learning/{_IMPORTED_FILENAME}",
+        "prompt_field_count": int(prompt_index.get("field_count") or 0),
+        "prompt_storage": f"database/learning/{_PROMPT_INDEX_FILENAME}",
     }
 
 
@@ -798,10 +990,17 @@ def import_text_learning_payload(payload: dict[str, object], *, source_name: str
     store = _read_imported_store()
     sources = store.get("sources") if isinstance(store.get("sources"), list) else []
     if any(isinstance(item, dict) and item.get("fingerprint") == fingerprint for item in sources):
+        prompt_index = _rebuild_prompt_index(
+            {
+                "sources": [{"fingerprint": fingerprint, "source_name": _clean(source_name, limit=255)}],
+                "fields": incoming_fields,
+            }
+        )
         return {
             "imported": False,
             "duplicate": True,
-            "message": "这份学习记录已经导入过，没有重复增加权重",
+            "message": "这份学习记录已经导入过，没有重复增加权重；字段提示词索引已重新生成",
+            "prompt_field_count": prompt_index["field_count"],
             "skipped_fields": normalized["skipped_fields"],
             "skipped_entries": normalized["skipped_entries"],
             "status": imported_text_learning_status(),
@@ -811,7 +1010,7 @@ def import_text_learning_payload(payload: dict[str, object], *, source_name: str
     merged_fields = _merge_field_lists(
         [existing_fields, incoming_fields],
         max_fields=1000,
-        max_examples_per_field=100,
+        max_examples_per_field=1_000_000,
     )
     now = datetime.now(UTC).isoformat()
     sources.append(
@@ -821,12 +1020,20 @@ def import_text_learning_payload(payload: dict[str, object], *, source_name: str
             "imported_at": now,
         }
     )
-    _write_imported_store(
+    updated_store = {
+        "version": 2,
+        "type": "bce_imported_text_learning",
+        "sources": sources,
+        "fields": merged_fields,
+    }
+    _write_imported_store(updated_store)
+    # The latest imported JSON is the complete runtime learning snapshot.
+    # Imported history is still merged for future export, but stale rules from an
+    # older package must not survive after the user imports a corrected snapshot.
+    prompt_index = _rebuild_prompt_index(
         {
-            "version": 2,
-            "type": "bce_imported_text_learning",
-            "sources": sources,
-            "fields": merged_fields,
+            "sources": [sources[-1]],
+            "fields": incoming_fields,
         }
     )
     imported_examples = sum(
@@ -839,6 +1046,7 @@ def import_text_learning_payload(payload: dict[str, object], *, source_name: str
         "fingerprint": fingerprint,
         "imported_field_count": len(incoming_fields),
         "imported_example_count": imported_examples,
+        "prompt_field_count": prompt_index["field_count"],
         "skipped_fields": normalized["skipped_fields"],
         "skipped_entries": normalized["skipped_entries"],
         "status": imported_text_learning_status(),
@@ -882,68 +1090,29 @@ def build_text_learning_profile(
     }
 
 
-def _prompt_learning_payload(profile: dict[str, object]) -> dict[str, object]:
-    """Drop pixel metadata before prompt injection; keep semantic evidence/context."""
-    prompt_fields: list[dict[str, object]] = []
-    for field in profile.get("fields") or []:
-        if not isinstance(field, dict):
-            continue
-        examples: list[dict[str, object]] = []
-        for example in field.get("examples") or []:
-            if not isinstance(example, dict):
-                continue
-            evidence = example.get("evidence") if isinstance(example.get("evidence"), dict) else {}
-            examples.append(
-                {
-                    "document_type": example.get("document_type"),
-                    "ai_value": example.get("ai_value"),
-                    "verified_value": example.get("verified_value"),
-                    "value_changed": example.get("value_changed"),
-                    "correction_reason": example.get("correction_reason"),
-                    "evidence_text": (
-                        evidence.get("text")
-                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
-                        else ""
-                    ),
-                    "context_before": (
-                        evidence.get("context_before")
-                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
-                        else ""
-                    ),
-                    "context_after": (
-                        evidence.get("context_after")
-                        if isinstance(evidence, dict) and not example.get("evidence_rejected")
-                        else ""
-                    ),
-                }
-            )
-        prompt_fields.append(
-            {
-                "field_name": field.get("field_name"),
-                "corrections": field.get("corrections") or [],
-                "examples": examples,
-            }
-        )
-    return {
-        "learning_mode": "few_shot_field_and_evidence_learning",
-        "fields": prompt_fields,
-    }
-
-
 def text_learning_prompt_section(allowed_fields: Iterable[str] | None = None) -> str:
-    profile = build_text_learning_profile(allowed_fields)
-    if not profile["fields"]:
+    """Return imported, precompiled field rules only; never scan live patient reviews."""
+    allowed = set(allowed_fields) if allowed_fields is not None else None
+    index = _read_prompt_index()
+    fields = [
+        field
+        for field in index.get("fields") or []
+        if isinstance(field, dict)
+        and _field_is_learnable(_clean(field.get("field_name"), limit=128), allowed)
+    ]
+    if not fields:
         return ""
-    payload = json.dumps(_prompt_learning_payload(profile), ensure_ascii=False, separators=(",", ":"))
+    payload = json.dumps(
+        {"learning_mode": "imported_field_rules", "fields": fields},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return (
-        "本地文本学习结果如下。以下是本机历史人工审核形成的字段学习样例。你必须自主归纳两个方面："
-        "①该字段在什么原文条件下应如何填写/规范化；②什么样的OCR语句才是该字段的有效证据，"
-        "raw_text应引用哪一段最小充分原文。examples中的evidence_text及其前后文用于学习证据选择；"
-        "ai_value→verified_value用于学习历史误判与正确填写方式。"
-        "这些都是历史病例样例，绝不能把历史患者的值复制到当前患者；也绝不能复制历史evidence_text。"
-        "当前OCR没有相应证据时不得因为历史样例而填值；历史规则与当前OCR冲突时始终以当前OCR为准。"
-        "导出JSON中的bbox/line_id只用于追溯和当前图片高亮，不作为跨病例像素位置规则。"
-        "如果当前OCR中存在与历史样例相似的证据表达，应按历史人工审核形成的填写方式理解，"
-        "同时raw_text仍须逐字引用当前OCR中的真实证据。\n"
+        "已导入的字段学习规则如下。这里只包含导入学习JSON时由全部审核记录归纳出的字段规则，"
+        "不包含历史病例样例、患者原文或坐标。仅使用当前文档允许字段对应的规则："
+        "filling_rules用于字段填写和规范化；review_rules用于执行人工归纳的审核要求；"
+        "positioning用于在当前OCR中寻找有效结果语句并确定raw_text。"
+        "所有字段值和raw_text都必须来自当前OCR；当前OCR没有证据时不得填值，"
+        "规则与当前OCR明确内容冲突时以当前OCR为准。\n"
         f"{payload}"
     )

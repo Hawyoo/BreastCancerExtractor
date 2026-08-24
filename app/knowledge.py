@@ -1,6 +1,6 @@
+import re
 from functools import lru_cache
 from itertools import combinations
-import re
 
 import yaml
 
@@ -8,11 +8,29 @@ from app.config import settings
 from app.derived_fields import expand_questionnaire_catalog
 from app.text_learning import text_learning_prompt_section
 
+IMAGING_MULTIPLICITY_FIELD = "pre_mmg_single_lesion"
+IMAGING_DOCUMENT_TYPES = {"ULTRASOUND", "MAMMOGRAPHY", "MRI"}
+IMAGING_MULTIPLICITY_RULE = {
+    "id": "malignant_lesion_multiplicity_only",
+    "field": IMAGING_MULTIPLICITY_FIELD,
+    "description": (
+        "只统计明确属于乳腺癌/恶性目标的病灶数量。多发良性结节、囊肿、纤维腺瘤或增生结节"
+        "不能据此填写MULTIPLE；不能明确至少两个恶性病灶时不要输出MULTIPLE。"
+    ),
+}
+
 DOCUMENT_FIELD_EXCLUSIONS = {
     "MEDICAL_RECORD_COVER": {"sex"},
 }
 
 DOCUMENT_FIELD_INCLUSIONS = {
+    "MEDICAL_RECORD_COVER": {"contact"},
+    # cT is an imaging-size assessment. Imaging pages expose the complete
+    # clinical_stage field, while runtime signal gating decides whether the
+    # expensive staging pass is actually needed.
+    "ULTRASOUND": {"clinical_stage", IMAGING_MULTIPLICITY_FIELD},
+    "MAMMOGRAPHY": {"clinical_stage", IMAGING_MULTIPLICITY_FIELD},
+    "MRI": {"clinical_stage", IMAGING_MULTIPLICITY_FIELD},
     # Follow-up dates are stored in the followup group, but treatment records
     # are the preferred source and must therefore expose this field to the AI.
     "TREATMENT": {"last_visit_date"},
@@ -55,6 +73,16 @@ QUESTIONNAIRE_FIELD_OVERRIDES = {
     "chronic_disease_other": {
         "label": "其他慢性病（请填写）",
     },
+    # Keep the historical key so existing data stays readable, while presenting
+    # this as one imaging-wide malignant-lesion question instead of a mammography child.
+    IMAGING_MULTIPLICITY_FIELD: {
+        "label": "影像学恶性病灶是否多发",
+        "group": "pretreatment_imaging",
+        "depends_on": None,
+        "description": (
+            "仅统计明确恶性/乳腺癌目标病灶。多个良性结节、囊肿、纤维腺瘤等不构成多发恶性病灶。"
+        ),
+    },
 }
 
 
@@ -63,10 +91,24 @@ def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     fields = expand_questionnaire_catalog(payload["fields"])
-    return [
+    runtime_fields = [
         {**field, **QUESTIONNAIRE_FIELD_OVERRIDES.get(field["key"], {})}
         for field in fields
     ]
+    multiplicity = next(
+        (field for field in runtime_fields if field["key"] == IMAGING_MULTIPLICITY_FIELD), None
+    )
+    if multiplicity is not None:
+        runtime_fields = [field for field in runtime_fields if field["key"] != IMAGING_MULTIPLICITY_FIELD]
+        insert_at = next(
+            (
+                index for index, field in enumerate(runtime_fields)
+                if str(field.get("group", "")).startswith("pretreatment_")
+            ),
+            len(runtime_fields),
+        )
+        runtime_fields.insert(insert_at, multiplicity)
+    return runtime_fields
 
 
 @lru_cache
@@ -268,6 +310,7 @@ def extraction_prompt(
     *,
     include_fields: set[str] | None = None,
     exclude_fields: set[str] | None = None,
+    force_include_fields: bool = False,
 ) -> tuple[str, set[str]]:
     target_fields = document_target_fields(document_type)
     catalog = field_catalog()
@@ -279,6 +322,13 @@ def extraction_prompt(
         catalog.extend(
             field for field in questionnaire_catalog()
             if field["key"] in included_for_document and field["key"] not in existing
+        )
+
+    if include_fields is not None and force_include_fields:
+        existing = {field["key"] for field in catalog}
+        catalog.extend(
+            field for field in questionnaire_catalog()
+            if field["key"] in include_fields and field["key"] not in existing
         )
 
     excluded_for_document = DOCUMENT_FIELD_EXCLUSIONS.get(document_type, set())
@@ -302,7 +352,9 @@ def extraction_prompt(
         for field in catalog
     ]
     allowed = {field["key"] for field in catalog}
-    rules = document_rules().get(document_type, [])
+    rules = list(document_rules().get(document_type, []))
+    if document_type in IMAGING_DOCUMENT_TYPES:
+        rules.append(IMAGING_MULTIPLICITY_RULE)
     preferences = _prompt_preferences()
     learning = text_learning_prompt_section(allowed)
     admission_focus = admission_focus_sections(ocr_text) if document_type == "ADMISSION" else ""
@@ -314,7 +366,9 @@ def extraction_prompt(
     prompt = (
         f"文档类型：{document_type}\n\n"
         "可抽取字段如下。field_name必须严格使用key；只返回本页有依据的非空字段。"
+        "value必须使用字段values或form_options中定义的标准编码，不能返回中文显示标签或解释性句子；"
         "integer类型的value只能填写阿拉伯数字整数，不能填写文字；"
+        "measurement_3d类型只记录实际出现的1–3个径线并用×连接；二维值写成25×18，末尾不要添加逗号、乘号或NA；"
         "multiselect类型如同时命中多个选项，按values定义顺序用英文逗号连接标准值，"
         "例如HYPERTENSION,DIABETES，不要只保留一个选项。"
         "yes_no_unknown类型如果本页没有明确相关记录，不要在单张文档层面输出NO或UNKNOWN；"

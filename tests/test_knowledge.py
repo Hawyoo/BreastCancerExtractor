@@ -3,7 +3,13 @@ from pathlib import Path
 import yaml
 
 from app.knowledge import extraction_prompt, questionnaire_field_index, source_priority
-from app.main import immunotherapy_evidence_is_valid, normalize_observation_value, observation_value_is_valid
+from app.main import (
+    immunotherapy_evidence_is_valid,
+    inferred_clinical_t_uses_imaging_size,
+    normalize_observation_value,
+    observation_value_is_valid,
+    staging_fields_supported_by_ocr,
+)
 
 ROOT = Path(__file__).parents[1]
 
@@ -104,6 +110,9 @@ def test_data_processing_preferences_capture_user_rules():
     assert measurement["input_slots"] == 3
     assert measurement["optional_slots"] == ["height"]
     assert preferences["conditional_questions"]["representation"]["export_value"] == "NA"
+    neoadjuvant_override = preferences["conditional_questions"]["overrides"]["neoadjuvant_received"]
+    assert neoadjuvant_override["user_visible_value"] == ""
+    assert neoadjuvant_override["export_value"] == ""
 
     cohort = yaml.safe_load((ROOT / "knowledge/schema/cohort_fields.yaml").read_text(encoding="utf-8"))
     by_key = {field["key"]: field for field in cohort["fields"]}
@@ -215,6 +224,33 @@ def test_document_type_api_exposes_the_same_mapping(client):
     assert {item["key"] for item in documents["MEDICAL_RECORD_COVER"]["regions"]}.isdisjoint(
         {"height_cm", "weight_kg"}
     )
+
+
+def test_staging_pass_requires_real_tnm_or_imaging_size_signals():
+    eligible = {"clinical_stage", "pathological_stage"}
+    assert staging_fields_supported_by_ocr("右乳BI-RADS 5类，建议穿刺", eligible) == set()
+    assert staging_fields_supported_by_ocr("超声示右乳目标肿块最大径23 mm", eligible) == {"clinical_stage"}
+    assert staging_fields_supported_by_ocr("临床分期cT2N1M0", eligible) == {"clinical_stage"}
+    assert staging_fields_supported_by_ocr("术后病理：ypT1cN0M0", eligible) == {"pathological_stage"}
+
+    _, ultrasound_staging = extraction_prompt(
+        "ULTRASOUND", "右乳目标肿块最大径23 mm", include_fields={"clinical_stage"}
+    )
+    assert ultrasound_staging == {"clinical_stage"}
+
+
+def test_inferred_clinical_t_requires_imaging_measurement_and_rejects_birads_reasoning():
+    valid = [{
+        "component": "T", "fact": "影像最大径23 mm，对应cT2", "source_text": "超声示肿块最大径23 mm",
+    }]
+    birads_only = [{
+        "component": "T", "fact": "BI-RADS 5类，对应cT2", "source_text": "右乳BI-RADS 5类",
+    }]
+    assert inferred_clinical_t_uses_imaging_size(valid, "ADMISSION") is True
+    assert inferred_clinical_t_uses_imaging_size(birads_only, "ULTRASOUND") is False
+
+    prompt, _ = extraction_prompt("ADMISSION", "超声示肿块最大径23 mm，BI-RADS 5类")
+    assert "BI-RADS分级不参与T分期" in prompt
 
 
 def test_tnm_context_and_postoperative_pathology_source_strategy():

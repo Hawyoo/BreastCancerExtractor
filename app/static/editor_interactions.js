@@ -2,7 +2,8 @@
   const BLACK_CROSSHAIR_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M16 2V30M2 16H30' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E") 16 16, crosshair`;
   const COLORS = {
     crop: {fill: "rgba(244,201,93,.18)", stroke: "#f4c95d"},
-    redact: {fill: "rgba(18,18,18,.42)", stroke: "#111111"},
+    redact: {fill: "#000000", stroke: "#000000"},
+    redactDraft: {fill: "rgba(18,18,18,.42)", stroke: "#111111"},
     roi: {fill: "rgba(39,147,104,.16)", stroke: "#31a87a"},
     activeRoi: {fill: "rgba(255,196,68,.18)", stroke: "#f2bd3e"},
   };
@@ -193,7 +194,7 @@
   function drawDraft() {
     if (!state.drawing) return;
     const rect = normalizedRect(state.drawing.start, state.drawing.end);
-    const color = state.mode === "redact" ? COLORS.redact : COLORS.crop;
+    const color = state.mode === "redact" ? COLORS.redactDraft : COLORS.crop;
     drawDisplayOverlay(rect, color.fill, color.stroke, "");
   }
 
@@ -209,7 +210,7 @@
       ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height);
       ctx.moveTo(c[0].x, c[0].y); c.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); ctx.closePath();
       ctx.fill("evenodd"); ctx.restore();
-      drawPolygon(state.crop, "rgba(244,201,93,.10)", COLORS.crop.stroke, state.cropEditable && state.mode === "crop", "裁剪");
+      drawPolygon(state.crop, "rgba(244,201,93,.10)", COLORS.crop.stroke, state.cropEditable && state.mode === "crop", "");
     }
 
     state.redactions.forEach((rect, index) => {

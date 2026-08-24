@@ -129,15 +129,7 @@ def test_reviewed_field_becomes_few_shot_example_with_ocr_location(tmp_path, mon
     assert evidence["lines"][0]["bbox"] == [20.0, 130.0, 620.0, 170.0]
     assert evidence["lines"][0]["relative_bbox"] == [0.02, 0.1625, 0.62, 0.2125]
 
-    prompt = text_learning_prompt_section({"primary_her2"})
-    assert "few_shot_field_and_evidence_learning" in prompt
-    assert evidence_text in prompt
-    assert '"ai_value":"POSITIVE"' in prompt
-    assert '"verified_value":"2+"' in prompt
-    assert "context_before" in prompt
-    assert '"bbox":' not in prompt
-    assert '"line_ids":' not in prompt
-
+    assert text_learning_prompt_section({"primary_her2"}) == ""
     rejected = reject_observation_evidence_location("obs-her2")
     assert rejected["evidence_status"] == "REJECTED"
     rejected_profile = build_text_learning_profile({"primary_her2"})
@@ -145,13 +137,30 @@ def test_reviewed_field_becomes_few_shot_example_with_ocr_location(tmp_path, mon
     assert rejected_example["evidence_rejected"] is True
     assert rejected_example["evidence"]["text"] == ""
     assert rejected_example["evidence"]["matched"] is False
-    assert evidence_text not in text_learning_prompt_section({"primary_her2"})
+    assert text_learning_prompt_section({"primary_her2"}) == ""
 
     restored = restore_observation_evidence_location("obs-her2")
     assert restored["evidence_status"] == "AUTO"
     restored_example = build_text_learning_profile({"primary_her2"})["fields"][0]["examples"][0]
     assert restored_example["evidence"]["text"] == evidence_text
     assert restored_example["evidence"]["matched"] is True
+
+    restored_profile = build_text_learning_profile({"primary_her2"})
+    import_text_learning_payload(
+        {**restored_profile, "type": "bce_text_learning"},
+        source_name="reviewed-learning.json",
+    )
+    prompt = text_learning_prompt_section({"primary_her2"})
+    assert "imported_field_rules" in prompt
+    assert evidence_text not in prompt
+    assert '"ai_value"' not in prompt
+    assert '"verified_value"' not in prompt
+    assert '"examples"' not in prompt
+    assert '"evidence_text"' not in prompt
+    assert '"text":"HER-2"' in prompt
+    assert '"text":"评分"' in prompt
+    assert '"bbox":' not in prompt
+    assert '"line_ids":' not in prompt
 
 
 def test_v3_examples_survive_export_import_and_remain_idempotent(tmp_path, monkeypatch):

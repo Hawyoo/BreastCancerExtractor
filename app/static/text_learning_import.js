@@ -24,10 +24,10 @@
       const payload = await api("/api/text-learning");
       const imported = payload.imported || {};
       if (status) {
-        const totalExamples = Number(payload.example_count || 0);
+        const promptFields = Number(imported.prompt_field_count || 0);
         const importedPackages = Number(imported.source_count || 0);
-        status.textContent = `学习样例：${totalExamples} 条 · 长期导入：${importedPackages} 包`;
-        status.title = `学习文件保存在 ${imported.storage || "database/learning/"}；定位坐标随JSON导出用于追溯`;
+        status.textContent = `字段规则：${promptFields} 个 · 已导入：${importedPackages} 包`;
+        status.title = `运行时只读取导入后生成的字段规则；完整审核与定位数据保存在 ${imported.storage || "database/learning/"}`;
       }
       return payload;
     } catch (error) {
@@ -44,7 +44,7 @@
     if (!exportButton || !importButton || !input || !status) return;
 
     exportButton.title = "导出字段填写方法、人工纠正样例和 OCR 文本定位证据";
-    importButton.title = "导入其他 BCE 导出的字段学习样例，并长期用于后续 AI 提取";
+    importButton.title = "导入学习 JSON，重新生成各字段的填写与文本定位规则";
 
     importButton.onclick = () => {
       input.value = "";
@@ -78,8 +78,8 @@
           toast("这份学习记录已经导入过，没有重复增加权重");
         } else {
           const skipped = Number(result.skipped_fields || 0) + Number(result.skipped_entries || 0);
-          const examples = Number(result.imported_example_count || 0);
-          toast(`学习记录已导入：${result.imported_field_count || 0} 个字段 · ${examples} 条证据样例${skipped ? ` · 跳过 ${skipped} 项无效内容` : ""}`);
+          const promptFields = Number(result.prompt_field_count || 0);
+          toast(`学习记录已导入：已生成 ${promptFields} 个字段提示词${skipped ? ` · 跳过 ${skipped} 项无效内容` : ""}`);
         }
         await loadLearningStatus();
       } catch (error) {

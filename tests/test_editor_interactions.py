@@ -23,7 +23,8 @@ def test_canvas_keeps_default_cursor_until_drawing_starts():
 def test_preview_colors_remain_mode_specific():
     script = _script()
     assert 'crop: {fill: "rgba(244,201,93,.18)", stroke: "#f4c95d"}' in script
-    assert 'redact: {fill: "rgba(18,18,18,.42)", stroke: "#111111"}' in script
+    assert 'redact: {fill: "#000000", stroke: "#000000"}' in script
+    assert 'redactDraft: {fill: "rgba(18,18,18,.42)", stroke: "#111111"}' in script
     assert 'roi: {fill: "rgba(39,147,104,.16)", stroke: "#31a87a"}' in script
 
 
@@ -47,6 +48,14 @@ def test_redaction_has_resize_handles_and_no_white_label():
     assert "resizeRotatedRect" in script
     assert 'drawPolygon(rect, COLORS.redact.fill, COLORS.redact.stroke, selected, "")' in script
     assert "隐私遮盖" not in script
+
+
+def test_finished_redaction_is_solid_black_while_drawing_remains_visible():
+    script = _script()
+    base = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert 'drawPolygon(rect, COLORS.redact.fill, COLORS.redact.stroke, selected, "")' in script
+    assert 'state.mode === "redact" ? COLORS.redactDraft : COLORS.crop' in script
+    assert 'drawOverlay(rect,"#000000","#000000","")' in base
 
 
 def test_resize_and_rotation_work_for_rotated_boxes():

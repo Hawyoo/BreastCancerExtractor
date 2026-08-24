@@ -187,6 +187,12 @@ conditional_questions:
     user_visible_value: NA
     export_value: NA
     rule: 前提明确不满足时，程序内部可保留NOT_APPLICABLE作为机器状态；任何面向用户的显示和导出必须写NA，而不是NOT_APPLICABLE。
+  overrides:
+    neoadjuvant_received:
+      unmet_value: 'NO'
+      user_visible_value: ''
+      export_value: ''
+      rule: 未接受新辅助治疗时，所有下游新辅助方案、周期、治疗后影像、疗效和病理缓解字段均留空，不得填写否或NA。
   examples:
     - prerequisite: {field: neoadjuvant_received, equals: 'YES'}
       dependents: [neoadjuvant_regimen, neoadjuvant_cycles, post_neoadj_us_available, post_neoadj_mri_available]

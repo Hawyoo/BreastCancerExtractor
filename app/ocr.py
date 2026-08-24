@@ -66,6 +66,23 @@ async def _recognize_png_bytes(client: httpx.AsyncClient, filename: str, content
     return response.json()
 
 
+async def recognize_region(path: Path, region: dict[str, Any]) -> dict[str, Any]:
+    """OCR one user-selected text region without rebuilding the page OCR result."""
+    try:
+        source = Image.open(path).convert("RGB")
+        source.load()
+    except (OSError, UnidentifiedImageError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid sanitized image") from exc
+    cropped = _crop_region_png(source, region)
+    if cropped is None:
+        raise HTTPException(status_code=422, detail="文本定位框无效或超出图片范围")
+    try:
+        async with httpx.AsyncClient(base_url=settings.ocr_url, timeout=300) as client:
+            return await _recognize_png_bytes(client, "manual-text-region.png", cropped)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"OCR unavailable: {exc}") from exc
+
+
 def _compose_ai_ocr_text(page_text: str, regions: list[dict[str, Any]]) -> str:
     """Append human-guided text-location context without treating it as verified data."""
     meaningful = [region for region in regions if str(region.get("full_text") or "").strip()]

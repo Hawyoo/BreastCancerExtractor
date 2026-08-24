@@ -3,7 +3,11 @@ from pathlib import Path
 from app.config import settings
 from app.db import connect, init_db, utc_now
 from app.knowledge import extraction_prompt
-from app.text_learning import build_text_learning_profile, text_learning_prompt_section
+from app.text_learning import (
+    build_text_learning_profile,
+    import_text_learning_payload,
+    text_learning_prompt_section,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +22,7 @@ def test_text_learning_is_empty_when_runtime_catalog_is_unavailable(tmp_path, mo
 def test_human_corrections_become_machine_readable_learning_and_prompt_context(tmp_path, monkeypatch):
     database = tmp_path / "catalog.sqlite"
     monkeypatch.setattr(settings, "database_path", database)
+    monkeypatch.setattr(settings, "data_path", tmp_path / "database")
     init_db()
     now = utc_now()
 
@@ -81,17 +86,26 @@ def test_human_corrections_become_machine_readable_learning_and_prompt_context(t
     }
     assert field["manual_values"] == [{"value": "3+", "count": 1}]
 
-    learning = text_learning_prompt_section({"primary_her2"})
-    assert "本地文本学习结果如下" in learning
-    assert '"from":"POSITIVE"' in learning
-    assert '"to":"2+"' in learning
-    assert "绝不能把历史患者的值复制到当前患者" in learning
+    # Local edits are export material only. They do not change extraction until
+    # the user explicitly exports and imports the learning JSON.
+    assert text_learning_prompt_section({"primary_her2"}) == ""
 
     prompt, allowed = extraction_prompt("BIOPSY_PATHOLOGY", "HER2（2+）")
     assert "primary_her2" in allowed
-    assert "本地文本学习结果如下" in prompt
+    assert "已导入的字段学习规则如下" not in prompt
     assert "证据定位要求" in prompt
     assert "raw_text必须尽量逐字引用当前OCR中的最小充分证据" in prompt
+
+    import_text_learning_payload(
+        {**profile, "type": "bce_text_learning"},
+        source_name="current-learning.json",
+    )
+    learning = text_learning_prompt_section({"primary_her2"})
+    assert "已导入的字段学习规则如下" in learning
+    assert '"when_candidate_is":"POSITIVE"' in learning
+    assert '"fill_as":"2+"' in learning
+    assert '"examples"' not in learning
+    assert '"evidence_text"' not in learning
 
 
 def test_frontend_wires_backend_learning_export_and_maps_raw_text_to_ocr_bbox():
@@ -110,5 +124,9 @@ def test_frontend_wires_backend_learning_export_and_maps_raw_text_to_ocr_bbox():
     assert "line_id" in script
     assert "rectFromOcrBox" in script
     assert "locateObservationEvidence" in script
+    assert 'const highlightColor = "rgba(49,168,122,.18)"' in script
+    assert "ctx.strokeStyle = highlightColor" in script
+    assert "ctx.lineWidth = 1" in script
+    assert 'ctx.strokeStyle = "#1e8f68"' not in script
     assert '[/查看来源图/g, "文本定位"]' in script
     assert "BCE_text_learning_v3_" in controls

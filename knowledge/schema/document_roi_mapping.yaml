@@ -107,6 +107,8 @@ documents:
     regions:
       - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
       - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: clinical_stage, label: "临床TNM分期", target_fields: [clinical_stage]}
+      - {key: pre_mmg_single_lesion, label: "影像学恶性病灶是否多发", target_fields: [pre_mmg_single_lesion]}
       - {key: pre_us_available, label: "是否有治疗前超声", target_fields: [pre_us_available]}
       - {key: pre_us_tumor_size_mm, label: "治疗前超声恶性肿块大小", target_fields: [pre_us_tumor_size_mm]}
       - {key: pre_us_tumor_location, label: "治疗前超声恶性肿块位置", target_fields: [pre_us_tumor_location]}
@@ -125,6 +127,7 @@ documents:
     regions:
       - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
       - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: clinical_stage, label: "临床TNM分期", target_fields: [clinical_stage]}
       - {key: pre_mmg_available, label: "是否有治疗前钼靶", target_fields: [pre_mmg_available]}
       - {key: pre_mmg_single_lesion, label: "影像学恶性病灶是否多发", target_fields: [pre_mmg_single_lesion]}
       - {key: pre_mmg_other_single, label: "单发恶性病灶钼靶结果", target_fields: [pre_mmg_other_single]}
@@ -138,6 +141,8 @@ documents:
     regions:
       - {key: meta_exam_date, label: "检查日期", metadata_fields: [exam_date]}
       - {key: meta_treatment_phase, label: "治疗阶段", metadata_fields: [treatment_phase]}
+      - {key: clinical_stage, label: "临床TNM分期", target_fields: [clinical_stage]}
+      - {key: pre_mmg_single_lesion, label: "影像学恶性病灶是否多发", target_fields: [pre_mmg_single_lesion]}
       - {key: pre_mri_available, label: "是否有治疗前MRI", target_fields: [pre_mri_available]}
       - {key: pre_mri_tumor_size_mm, label: "治疗前MRI恶性肿块大小", target_fields: [pre_mri_tumor_size_mm]}
       - {key: mri_malignant_lesion_location_roi, label: "MRI恶性肿块位置", target_fields: [other_pretreatment_imaging]}

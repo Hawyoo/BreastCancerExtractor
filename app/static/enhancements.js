@@ -114,7 +114,7 @@
       corners.slice(1).forEach(p => ctx.lineTo(p.x, p.y)); ctx.closePath();
       ctx.fill("evenodd");
       ctx.restore();
-      drawRotatedOverlay(state.crop, "rgba(244,201,93,.04)", "#f4c95d", "裁剪", state.cropEditable && state.mode === "crop");
+      drawRotatedOverlay(state.crop, "rgba(244,201,93,.04)", "#f4c95d", "", state.cropEditable && state.mode === "crop");
     }
 
     state.redactions.forEach((rect, index) =>
@@ -419,6 +419,7 @@
   // Leaving a patient also drops unsaved browser-only imports directly, without a second confirm.
   $("#exit-patient").onclick = () => {
     clearRawQueue(); state.processingJobs = []; renderProcessingQueue(); state.patient = null; state.selectedObservationId = null;
+    state.reviewFieldDrafts = {}; state.reviewRegionDrafts = {};
     $("#patient-workspace").hidden = true; $("#empty-state").hidden = false;
     updatePatientSidebar(); loadPatients().catch(error => toast(error.message)); return true;
   };
@@ -427,7 +428,7 @@
   const originalSelectPatient = selectPatient;
   selectPatient = async id => {
     const switching = state.patient && state.patient.id !== id;
-    if (switching) { state.processingJobs = []; renderProcessingQueue(); }
+    if (switching) { state.processingJobs = []; state.reviewFieldDrafts = {}; state.reviewRegionDrafts = {}; renderProcessingQueue(); }
     return originalSelectPatient(id);
   };
 

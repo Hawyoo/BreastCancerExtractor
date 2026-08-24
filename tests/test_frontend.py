@@ -230,6 +230,10 @@ def test_initial_patient_selection_is_main_view_and_review_can_advance_continuou
     assert "navigateObservation(-1)" in javascript and "navigateObservation(1)" in javascript
     assert "nextUnverifiedObservation(result.id)" in javascript
     assert "已进入下一条待审核记录" in javascript
+    assert 'sameReviewGroup=observations.filter' in javascript
+    assert '`待审核 ${reviewGroupIndex+1} / ${sameReviewGroup.length}`' in javascript
+    assert '`已审核 ${reviewGroupIndex+1} / ${sameReviewGroup.length}`' in javascript
+    assert '`${index+1} / ${observations.length}`' not in javascript
 
 
 def test_review_confirmation_updates_locally_and_reuses_the_same_document_image():
@@ -338,6 +342,18 @@ def test_homepage_has_all_patient_data_preview_and_csv_export():
     assert "position: sticky" in styles
 
 
+def test_exit_closes_patient_review_and_data_preview_scrolls_to_table():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    leave_start = javascript.index("function leavePatient()")
+    leave_end = javascript.index('$("#exit-patient").onclick', leave_start)
+    leave_handler = javascript[leave_start:leave_end]
+    assert 'const reviewDialog=$("#patient-review-dialog")' in leave_handler
+    assert "if(reviewDialog?.open)reviewDialog.close()" in leave_handler
+    preview_start = javascript.index('$("#open-data-preview").onclick')
+    preview_end = javascript.index('$("#close-data-preview").onclick', preview_start)
+    assert 'document.querySelector(".data-table-shell")?.scrollIntoView' in javascript[preview_start:preview_end]
+
+
 def test_homepage_can_scan_and_merge_self_contained_patient_directories():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
@@ -365,3 +381,12 @@ def test_review_actions_completion_summary_delete_and_conflict_gallery_are_prese
     assert "全部问题与答案" in javascript
     assert 'id="review-inference-basis"' in html
     assert "TNM评估依据" in javascript
+
+
+def test_structured_api_errors_are_rendered_as_readable_messages():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    assert "function formatApiErrorDetail(detail, fallback)" in javascript
+    assert "Array.isArray(item.loc)" in javascript
+    assert 'messages.join("；")' in javascript
+    assert "payload?.detail??payload?.message" in javascript
+    assert "message = (await response.json()).detail" not in javascript

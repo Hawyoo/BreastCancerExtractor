@@ -188,8 +188,8 @@ fields:
     allowed_prefixes: [c, yc]
     required_components: [T, N, M]
     normalization: compact_tnm
-    source_strategy: 明确记录的治疗前cTNM优先；缺失时综合治疗前查体、影像、原发灶/区域淋巴结穿刺和远处转移证据推断。新辅助后术前再评估使用ycTNM且不覆盖原cTNM。
-    description: 填写cTNM；新辅助后临床再评估可填写ycTNM。必须包含T、N、M，不以单独的I/II/III/IV分期组替代。
+    source_strategy: 明确记录的治疗前cTNM优先；缺失时，cT只依据治疗前影像记录的目标乳腺恶性肿块实测大小，cN与cM再分别结合查体、区域淋巴结穿刺及远处转移证据。BI-RADS不参与cT判断。新辅助后术前再评估使用ycTNM且不覆盖原cTNM。
+    description: 填写cTNM；新辅助后临床再评估可填写ycTNM。必须包含T、N、M，不以单独的I/II/III/IV分期组替代；推断cT必须有影像学肿瘤大小证据，禁止根据BI-RADS推断。
   - key: pathological_stage
     label: 病理分期
     group: staging

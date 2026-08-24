@@ -34,3 +34,31 @@ def test_wrong_text_location_can_be_deleted_and_restored():
     assert "/evidence-location/restore" in script
     assert 'observation.evidence_status = "REJECTED"' in script
     assert "已排除出定位学习" in script
+
+
+def test_smart_evidence_highlight_has_no_label_over_the_source_text():
+    script = (ROOT / "app/static/text_learning.js").read_text(encoding="utf-8")
+    assert "ctx.fillRect(x, y, width, height)" in script
+    assert "ctx.strokeRect(x, y, width, height)" in script
+    assert "文本定位 ${Math.round(item.score * 100)}%" not in script
+    assert "ctx.fillText(label, x + 5" not in script
+
+
+def test_crop_overlay_has_no_yellow_text_label():
+    enhancements = (ROOT / "app/static/enhancements.js").read_text(encoding="utf-8")
+    interactions = (ROOT / "app/static/editor_interactions.js").read_text(encoding="utf-8")
+    assert 'drawRotatedOverlay(state.crop, "rgba(244,201,93,.04)", "#f4c95d", "",' in enhancements
+    crop_polygon = (
+        'drawPolygon(state.crop, "rgba(244,201,93,.10)", COLORS.crop.stroke, '
+        'state.cropEditable && state.mode === "crop", "")'
+    )
+    assert crop_polygon in interactions
+    assert 'state.cropEditable && state.mode === "crop", "裁剪"' not in enhancements + interactions
+
+
+def test_zoomed_canvas_keeps_its_left_edge_scrollable():
+    styles = (ROOT / "app/static/styles.css").read_text(encoding="utf-8")
+    assert ".canvas-shell { position: relative; min-height: 340px; display: flex;" in styles
+    assert "justify-content: flex-start" in styles
+    assert "#image-canvas { display: block; flex: 0 0 auto;" in styles
+    assert "margin: auto" in styles

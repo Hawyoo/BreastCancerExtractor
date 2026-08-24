@@ -43,7 +43,9 @@
   function normalizeMeasurementValue(observation, value) {
     const text = String(value ?? "").trim();
     if (fieldType(observation) !== "measurement_3d" || !text) return text;
-    return text.replace(/(\d)\s*[,，xX*＊]\s*(?=\d)/g, "$1×");
+    return text
+      .replace(/(\d)\s*[,，xX*＊]\s*(?=\d)/g, "$1×")
+      .replace(/\s*[,，、;；×xX*＊]\s*$/g, "");
   }
 
   function formatHint(observation) {
@@ -219,7 +221,8 @@
       hint.className = "field-format-hint";
       editorCell.appendChild(hint);
     }
-    hint.textContent = formatHint(observation);
+    const hintText = formatHint(observation);
+    if (hint.textContent !== hintText) hint.textContent = hintText;
     let message = row.querySelector(".field-validation-message");
     if (!message) {
       message = document.createElement("small");
@@ -255,7 +258,7 @@
     const {message} = ensureInlineMessages(row, observation);
     const error = validationMessage(observation, input.value);
     if (message) {
-      message.textContent = error;
+      if (message.textContent !== error) message.textContent = error;
       message.hidden = !error;
     }
     input.classList.toggle("field-invalid", Boolean(error));
@@ -290,8 +293,11 @@
       if (!input) return;
       addInlineClearChoice(row);
       ensureInlineReason(row);
-      input.addEventListener("input", () => updateInlineValidation(row));
-      input.addEventListener("change", () => updateInlineValidation(row));
+      if (row.dataset.fieldValidationBound !== "1") {
+        row.dataset.fieldValidationBound = "1";
+        input.addEventListener("input", () => updateInlineValidation(row));
+        input.addEventListener("change", () => updateInlineValidation(row));
+      }
       updateInlineValidation(row);
     });
   }
@@ -368,7 +374,16 @@
       saveInlineValue(row, button, input);
     }, true);
 
-    new MutationObserver(() => queueMicrotask(decorateInlineRows))
+    let inlineDecorationQueued = false;
+    const queueInlineDecoration = () => {
+      if (inlineDecorationQueued) return;
+      inlineDecorationQueued = true;
+      queueMicrotask(() => {
+        inlineDecorationQueued = false;
+        decorateInlineRows();
+      });
+    };
+    new MutationObserver(queueInlineDecoration)
       .observe(reviewBody, {childList: true, subtree: true});
   }
 

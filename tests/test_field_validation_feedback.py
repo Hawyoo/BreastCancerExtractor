@@ -52,6 +52,7 @@ def test_measurements_show_one_to_three_dimensions_with_multiplication_sign():
     assert "多个径线统一用乘号 × 连接" in script
     assert "不要用逗号" in script
     assert "normalizeMeasurementValue" in script
+    assert '.replace(/\\s*[,，、;；×xX*＊]\\s*$/g, "")' in script
 
 
 def test_sequential_review_no_longer_disables_blank_integer_values():
@@ -78,6 +79,16 @@ def test_patient_review_can_record_a_custom_edit_reason():
     assert 'input.placeholder = "修改原因（可选）"' in script
     assert "该内容会写入审计记录的修改原因" in script
     assert 'body: JSON.stringify({value, operator: "local-user", reason})' in script
+
+
+def test_patient_review_validation_observer_is_idempotent_and_coalesced():
+    script = _script()
+    assert "if (hint.textContent !== hintText) hint.textContent = hintText" in script
+    assert "if (message.textContent !== error) message.textContent = error" in script
+    assert 'row.dataset.fieldValidationBound !== "1"' in script
+    assert 'row.dataset.fieldValidationBound = "1"' in script
+    assert "if (inlineDecorationQueued) return" in script
+    assert "new MutationObserver(queueInlineDecoration)" in script
 
 
 def test_validation_module_loads_after_review_inline_on_all_runtimes():

@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from app.knowledge import HUMAN_YES_NO_OPTIONS, PATIENT_LEVEL_BOOLEAN_POLICY, extraction_prompt, questionnaire_field_index
+from app.knowledge import (
+    HUMAN_YES_NO_OPTIONS,
+    PATIENT_LEVEL_BOOLEAN_POLICY,
+    extraction_prompt,
+    questionnaire_field_index,
+)
 
 ROOT = Path(__file__).parents[1]
 
@@ -29,7 +34,11 @@ def test_post_review_defaults_missing_yes_no_fields_but_keeps_manual_unknown():
     assert 'status === "DEFAULT_UNMENTIONED" ? "病历未提及 · 默认否"' in javascript
     assert 'row.values[key] = "否"' in javascript
     assert 'row.statuses[key] = "DEFAULT_UNMENTIONED"' in javascript
-    assert 'raw_text: YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否"' in javascript
+    assert 'YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否"' in javascript
+    assert 'const choiceValue = observation ? normalizeYesNoValue(value)' in javascript
+    assert 'A stored blank is an explicit human decision' in javascript
+    assert 'row?.statuses?.[key] === "NOT_APPLICABLE"' in javascript
+    assert 'status === "EMPTY"' in javascript
 
 
 def test_ui_csv_export_uses_defaulted_dataset_instead_of_server_blank_csv():

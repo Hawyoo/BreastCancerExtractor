@@ -58,7 +58,8 @@
       .patient-sort-toolbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:11px;color:var(--muted,#66736d)}
       .patient-sort-toolbar select{min-width:0;flex:1;padding:5px 7px;border:1px solid var(--line,#cfd6dc);border-radius:7px;background:var(--surface,#fff);color:inherit;font:inherit}
       .patient-browser-count{white-space:nowrap;font-size:11px;color:var(--muted,#66736d)}
-      .patient-item .patient-card-dates{display:block;margin-top:3px;font-size:9px;line-height:1.35;opacity:.76;font-weight:400}
+      .patient-item .patient-card-dates{display:grid;grid-template-columns:minmax(0,1fr);gap:1px;width:100%;margin-top:5px;font-size:9px;line-height:1.45;opacity:.76;font-weight:400;white-space:normal;overflow:visible;text-overflow:clip}
+      .patient-item .patient-card-dates small{display:block;width:100%;margin:0;white-space:normal;overflow:visible;text-overflow:clip}
       @media (max-width:760px){.patient-sort-toolbar{align-items:stretch;flex-direction:column}.patient-sort-toolbar label{width:100%}.patient-browser-count{align-self:flex-end}}
     `;
     document.head.appendChild(style);
@@ -95,11 +96,11 @@
     button.dataset.patientCode = String(patient.patient_code || "");
     let dates = button.querySelector(".patient-card-dates");
     if (!dates) {
-      dates = document.createElement("small");
+      dates = document.createElement("div");
       dates.className = "patient-card-dates";
       button.appendChild(dates);
     }
-    dates.textContent = `添加 ${formatDateTime(patient.created_at)} · 修改 ${formatDateTime(patient.updated_at)}`;
+    dates.innerHTML = `<small>创建：${formatDateTime(patient.created_at)}</small><small>修改：${formatDateTime(patient.updated_at)}</small>`;
     dates.title = `添加时间：${formatDateTime(patient.created_at)}\n最近修改：${formatDateTime(patient.updated_at)}`;
   }
 
@@ -130,6 +131,7 @@
 
   installStyles();
   ensureControls();
+  window.addEventListener("bce:patients-rendered", applyPatientSort);
 
   const originalLoadPatients = typeof loadPatients === "function" ? loadPatients : null;
   if (originalLoadPatients) {

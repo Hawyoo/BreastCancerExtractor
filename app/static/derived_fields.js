@@ -1,6 +1,6 @@
 (() => {
   function isDerivedKey(key) {
-    const value = String(key || "").trim();
+    const value = String(key || "").trim().replace(/^字段名\s*[:：]\s*/, "");
     return [
       "clinical_t_component", "clinical_n_component", "clinical_m_component",
       "pathological_t_component", "pathological_n_component", "pathological_m_component",

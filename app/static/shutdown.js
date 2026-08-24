@@ -61,12 +61,27 @@
     loadQuickImport();
   }
 
+  function loadAdditionalLesions() {
+    if (document.querySelector('script[data-bce-additional-lesions="1"]')) return;
+    const lesionScript = document.createElement("script");
+    lesionScript.src = "/additional_lesions.js";
+    lesionScript.async = false;
+    lesionScript.dataset.bceAdditionalLesions = "1";
+    document.body.appendChild(lesionScript);
+  }
+
   function loadFieldValidation() {
-    if (document.querySelector('script[data-bce-field-validation="1"]')) return;
+    const existingValidation = document.querySelector('script[data-bce-field-validation="1"]');
+    if (existingValidation) {
+      loadAdditionalLesions();
+      return;
+    }
     const validationScript = document.createElement("script");
     validationScript.src = "/field_validation.js";
     validationScript.async = false;
     validationScript.dataset.bceFieldValidation = "1";
+    validationScript.onload = loadAdditionalLesions;
+    validationScript.onerror = loadAdditionalLesions;
     document.body.appendChild(validationScript);
   }
 

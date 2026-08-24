@@ -77,8 +77,8 @@ choice_fields:
     options: {左侧: LEFT, 右侧: RIGHT, 双侧: BILATERAL}
   pre_mmg_single_lesion:
     type: single_choice
-    options: {是: SINGLE, 多发: MULTIPLE}
-    note: WPS第二个选项文字是“多发”，不是“否”。
+    options: {单发: SINGLE, 多发: MULTIPLE}
+    note: Web人工审核显示“单发 / 多发 / 留空”；留空保存为空值，不编码为否或不详。
   pre_mmg_birads:
     type: single_choice
     options:

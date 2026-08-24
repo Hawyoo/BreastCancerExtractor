@@ -9,6 +9,14 @@ def test_measurement_master_value_uses_multiplication_sign_without_requiring_thr
     assert normalize_observation_value(field, "25 x 18") == "25×18"
     assert normalize_observation_value(field, "25*18*15") == "25×18×15"
     assert normalize_observation_value(field, "25×18") == "25×18"
+    assert normalize_observation_value(field, "2×3,NA") == "2×3"
+    assert normalize_observation_value(field, "2 x 3 x N/A mm") == "2×3 mm"
+    assert normalize_observation_value(field, "25×18,") == "25×18"
+    assert normalize_observation_value(field, "25×18，") == "25×18"
+    assert normalize_observation_value(field, "25×18×") == "25×18"
+    assert normalize_observation_value(field, "25×18, mm") == "25×18 mm"
+    assert normalize_observation_value(field, [2, 3, None]) == "2×3"
+    assert normalize_observation_value(field, '[2, 3, "NA"]') == "2×3"
 
 
 def test_blank_is_a_valid_explicit_review_value_even_for_integer_fields():

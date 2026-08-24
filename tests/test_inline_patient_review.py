@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).parents[1]
 
 
@@ -14,7 +13,8 @@ def test_completed_patient_review_is_inline_and_direct_editable():
     assert 'input.className = "patient-review-inline-input"' in source
     assert 'saveInlineField(column, observation, editor.input, saveButton)' in source
     assert '患者事后回顾内嵌面板手动修改' in source
-    assert 'raw_text: YES_NO_FIELD_KEYS.has(column.key)' in source
+    assert 'YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否"' in source
+    assert ': "人工明确留空"' in source
     assert '"人工手动补充"' in source
 
 

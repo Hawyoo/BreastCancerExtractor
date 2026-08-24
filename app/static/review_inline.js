@@ -17,6 +17,7 @@
     adjuvant_treatment: "术后治疗",
     palliative_treatment: "姑息治疗",
     treatment_response: "疗效 / 转归",
+    pretreatment_imaging: "影像学总体",
     pretreatment_ultrasound: "治疗前超声",
     pretreatment_mammography: "治疗前钼靶",
     pretreatment_mri: "治疗前 MRI",
@@ -113,6 +114,7 @@
     const observation = observations.get(key);
     if (observation) return String(observation.current_value ?? "").trim();
     const preview = row?.values?.[key];
+    if (row?.statuses?.[key] === "NOT_APPLICABLE") return "";
     if (YES_NO_FIELD_KEYS.has(key)) {
       if (preview == null || preview === "" || preview === "NA") return "NO";
       return normalizeYesNoValue(preview);
@@ -121,6 +123,7 @@
   }
 
   function inlineFieldVisible(key, observations, row) {
+    if (row?.statuses?.[key] === "NOT_APPLICABLE") return false;
     if (key === "chronic_disease") {
       return currentPatientValue("has_chronic_disease", observations, row).toUpperCase() === "YES";
     }
@@ -183,7 +186,10 @@
       return createChoiceEditor(key, value, options, true);
     }
     if (!readonly && YES_NO_FIELD_KEYS.has(key)) {
-      return createChoiceEditor(key, normalizeYesNoValue(value || "NO"), options, false);
+      // Only a genuinely missing observation receives the cohort-level default
+      // NO. A stored blank is an explicit human decision and must stay blank.
+      const choiceValue = observation ? normalizeYesNoValue(value) : normalizeYesNoValue(value || "NO");
+      return createChoiceEditor(key, choiceValue, options, false);
     }
     if (!readonly && (observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(key))) {
       const input = document.createElement("input");
@@ -308,8 +314,7 @@
     const oldValue = observation
       ? String(observation.current_value ?? "").trim()
       : (YES_NO_FIELD_KEYS.has(column.key) ? "NO" : "");
-    if (!value) return toast(column.key === "chronic_disease" ? "请至少选择一种慢性病" : "请输入字段内容");
-    if ((observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(column.key)) && !/^\d+$/.test(value)) {
+    if (value && (observation?.field_type === "integer" || INTEGER_FIELD_KEYS.has(column.key)) && !/^\d+$/.test(value)) {
       return toast("该字段只能填写数字");
     }
     if (value === oldValue) return toast(YES_NO_FIELD_KEYS.has(column.key) && !observation ? "病历未提及，当前已按规则默认记为否" : "字段值没有变化");
@@ -334,9 +339,13 @@
           body: JSON.stringify({
             field_name: column.key,
             value,
-            raw_text: YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否" : "人工手动补充",
+            raw_text: value
+              ? (YES_NO_FIELD_KEYS.has(column.key) ? "人工覆盖患者级默认否" : "人工手动补充")
+              : "人工明确留空",
             confidence: "LOW",
             source_mode: "RECORDED",
+            operator: "local-user",
+            reason: value ? "患者事后回顾内嵌面板手动修改" : "人工明确留空",
           }),
         });
       }
@@ -443,7 +452,9 @@
       for (const key of YES_NO_FIELD_KEYS) {
         const current = row.values[key];
         const status = row.statuses[key] || "EMPTY";
-        if ((current == null || current === "") && status !== "UNAVAILABLE") {
+        // DEFAULT_UNMENTIONED applies only when the database has no answer.
+        // REVIEW_REQUIRED/VERIFIED blank values are explicit review outcomes.
+        if ((current == null || current === "") && status === "EMPTY") {
           row.values[key] = "否";
           row.statuses[key] = "DEFAULT_UNMENTIONED";
         }

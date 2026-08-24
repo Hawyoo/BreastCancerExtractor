@@ -15,6 +15,7 @@ const state = {
   editingDocumentId: null, editorBaseline: null,
   selectedObservationId: null, reviewCandidateObservationId: null, reviewMode: false,
   reviewLocationDirty: false,
+  reviewFieldDrafts: {}, reviewRegionDrafts: {},
   dataPreview: null,
 };
 
@@ -86,11 +87,36 @@ $("#image-enhancement-toggle").onclick=()=>{
 };
 updateEnhancementSwitch();
 
+function formatApiErrorDetail(detail, fallback) {
+  if(typeof detail==="string"&&detail.trim())return detail.trim();
+  if(Array.isArray(detail)){
+    const messages=detail.map(item=>{
+      if(typeof item==="string")return item;
+      if(!item||typeof item!=="object")return String(item||"");
+      const location=Array.isArray(item.loc)
+        ? item.loc.filter(part=>!["body","query","path"].includes(String(part))).join(".")
+        : "";
+      const message=String(item.msg||item.message||item.error||"").replace(/^Value error,\s*/i,"");
+      return [location,message].filter(Boolean).join("：");
+    }).filter(Boolean);
+    if(messages.length)return messages.join("；");
+  }
+  if(detail&&typeof detail==="object"){
+    const nested=detail.message||detail.msg||detail.error||detail.detail;
+    if(nested&&nested!==detail)return formatApiErrorDetail(nested,fallback);
+    try{return JSON.stringify(detail);}catch(_){}
+  }
+  return fallback;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   if (!response.ok) {
     let message = `请求失败 (${response.status})`;
-    try { message = (await response.json()).detail || message; } catch (_) {}
+    try {
+      const payload=await response.json();
+      message=formatApiErrorDetail(payload?.detail??payload?.message,message);
+    } catch (_) {}
     throw new Error(message);
   }
   return response.status === 204 ? null : response.json();
@@ -149,17 +175,26 @@ systemTheme.addEventListener("change", () => {
 });
 applyTheme();
 
+function formatPatientDateTime(value) {
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return "—";
+  return new Intl.DateTimeFormat("zh-CN",{
+    year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,
+  }).format(date).replace(/\//g,"-");
+}
+
 async function loadPatients() {
   state.patients = await api("/api/patients");
   const list = $("#patient-list"); list.innerHTML = "";
   for (const patient of state.patients) {
     const button = document.createElement("button");
     button.className = `patient-item ${state.patient?.id === patient.id ? "active" : ""}`;
-    button.innerHTML = `<strong>${escapeHtml(patient.patient_code)}</strong><small>${patient.document_count} 张脱敏图 · ${statusText(patient.status)}</small>`;
+    button.innerHTML = `<strong>${escapeHtml(patient.patient_code)}</strong><small>${patient.document_count} 张脱敏图 · ${statusText(patient.status)}</small><div class="patient-card-dates"><small>创建：${formatPatientDateTime(patient.created_at)}</small><small>修改：${formatPatientDateTime(patient.updated_at)}</small></div>`;
     button.onclick = () => selectPatient(patient.id);
     list.appendChild(button);
   }
   updatePatientSidebar();
+  window.dispatchEvent(new CustomEvent("bce:patients-rendered",{detail:{count:state.patients.length}}));
 }
 
 function packageCounts(item){
@@ -255,7 +290,7 @@ function renderDataPreview() {
       const td=document.createElement("td"),value=row.values[column.key]??"",status=row.statuses[column.key]||"EMPTY";
       td.textContent=value;td.title=value?`${column.label}：${value}\n字段名：${column.key}`:column.label;
       if(status==="VERIFIED")td.classList.add("status-verified");
-      else if(!["EMPTY","UNAVAILABLE"].includes(status))td.classList.add("status-pending");
+      else if(!["EMPTY","UNAVAILABLE","NOT_APPLICABLE"].includes(status))td.classList.add("status-pending");
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -276,7 +311,10 @@ async function loadDataPreview() {
 
 $("#open-data-preview").onclick=async()=>{
   $("#main-layout").hidden=true;$("#data-preview-view").hidden=false;
-  try{await loadDataPreview();}catch(error){toast(error.message);}
+  try{
+    await loadDataPreview();
+    requestAnimationFrame(()=>document.querySelector(".data-table-shell")?.scrollIntoView({behavior:"smooth",block:"start"}));
+  }catch(error){toast(error.message);}
 };
 $("#close-data-preview").onclick=()=>{$("#data-preview-view").hidden=true;$("#main-layout").hidden=false;};
 $("#data-preview-scope").onchange=()=>loadDataPreview().catch(error=>toast(error.message));
@@ -301,8 +339,11 @@ function updatePatientSidebar() {
 async function selectPatient(id) {
   const switching=state.patient&&state.patient.id!==id;
   if (state.rawQueuePatientId && state.rawQueuePatientId !== id) clearRawQueue();
-  if(switching){clearEditor();state.selectedObservationId=null;documentImageCache.clear();}
-  state.patient = await api(`/api/patients/${id}`);
+  if(switching){
+    clearEditor();state.selectedObservationId=null;documentImageCache.clear();
+    state.reviewFieldDrafts={};state.reviewRegionDrafts={};
+  }
+  state.patient = await api(`/api/patients/${id}?review_blank_parents=true`);
   $("#empty-state").hidden = true; $("#patient-workspace").hidden = false;
   $("#current-patient-code").textContent = state.patient.patient_code;
   $("#current-patient-status").textContent = statusText(state.patient.status);
@@ -311,7 +352,13 @@ async function selectPatient(id) {
 
 async function refreshCurrentPatient(patientId) {
   if (!state.patient || state.patient.id !== patientId) return;
-  state.patient = await api(`/api/patients/${patientId}`);
+  const selectedFieldName=(state.patient.observations||[])
+    .find(item=>item.id===state.selectedObservationId)?.field_name||null;
+  state.patient = await api(`/api/patients/${patientId}?review_blank_parents=true`);
+  if(state.selectedObservationId&&!state.patient.observations.some(item=>item.id===state.selectedObservationId)&&selectedFieldName){
+    const replacement=state.patient.observations.find(item=>item.field_name===selectedFieldName);
+    state.selectedObservationId=replacement?.id||null;
+  }
   $("#current-patient-status").textContent = statusText(state.patient.status);
   renderDocuments(); renderObservations(); updatePatientSidebar(); await loadPatients();
 }
@@ -367,7 +414,9 @@ function applyObservationReviewResult(result) {
 function leavePatient() {
   const pending=state.rawQueue.some(item=>item.file&&item.status!=="SAVED");
   if(pending&&!confirm("仍有未保存的导入图片，退出患者将清空当前待处理队列。确定退出吗？"))return false;
-  clearRawQueue();state.patient=null;state.selectedObservationId=null;
+  const reviewDialog=$("#patient-review-dialog");
+  if(reviewDialog?.open)reviewDialog.close();
+  clearRawQueue();state.patient=null;state.selectedObservationId=null;state.reviewFieldDrafts={};state.reviewRegionDrafts={};
   $("#patient-workspace").hidden=true;$("#empty-state").hidden=false;
   updatePatientSidebar();loadPatients().catch(error=>toast(error.message));
   return true;
@@ -415,7 +464,7 @@ $("#display-name").addEventListener("input", () => {
 updateRoiTypeOptions();
 
 function statusText(status) {
-  return ({UNPROCESSED:"未处理",AI_PROCESSED:"AI 已处理",REVIEW_REQUIRED:"待人工确认",VERIFIED:"人工已确认",EMPTY:"未填写",UNAVAILABLE:"不可用"})[status] || status;
+  return ({UNPROCESSED:"未处理",AI_PROCESSED:"AI 已处理",REVIEW_REQUIRED:"待人工确认",VERIFIED:"人工已确认",EMPTY:"未填写",UNAVAILABLE:"不可用",NOT_APPLICABLE:"不适用"})[status] || status;
 }
 
 function escapeHtml(value) {
@@ -608,12 +657,16 @@ function draw() {
     if (state.cropEditable) drawResizeHandles(r,"#f4c95d");
     ctx.restore();
   }
-  for (const rect of state.redactions) drawOverlay(rect,"rgba(18,18,18,.9)","#fff","隐私遮盖");
+  for (const rect of state.redactions) drawOverlay(rect,"#000000","#000000","");
   state.rois.forEach((roi,index)=>{
     drawOverlay(roi,"rgba(39,147,104,.16)","#31a87a",roi.label);
     if(state.mode==="roi"&&state.activeRoiIndex===index)drawResizeHandles(displayRect(roi),"#31a87a");
   });
-  if (state.drawing) drawDisplayOverlay(normalizedRect(state.drawing.start,state.drawing.end),"rgba(255,196,68,.16)","#f2bd3e",state.mode);
+  if (state.drawing) {
+    const draftFill=state.mode==="redact"?"rgba(18,18,18,.42)":"rgba(255,196,68,.16)";
+    const draftStroke=state.mode==="redact"?"#111111":"#f2bd3e";
+    drawDisplayOverlay(normalizedRect(state.drawing.start,state.drawing.end),draftFill,draftStroke,state.mode);
+  }
   updateSaveAction();
 }
 
@@ -745,7 +798,7 @@ canvas.addEventListener("pointerup", () => {
     state.activeRoiIndex=state.rois.length-1;
     $("#editor-help").textContent=state.reviewMode?"当前字段定位已框选；可拖动边线微调，然后点击保存定位。":"点击任意ROI进行选择，拖动绿色边线或控制点微调。";
   }
-  draw();
+  draw();updateReviewPositioningTools();
 });
 canvas.addEventListener("pointercancel", () => { state.drawing=null;state.cropResize=null;state.roiResize=null;draw(); });
 
@@ -755,8 +808,8 @@ $$('[data-mode]').forEach(button => button.onclick = () => {
   $("#editor-help").textContent = ({crop:state.cropEditable?"拖动黄色边线或八个控制点微调裁剪范围。":"拖动框选最终保留范围。",redact:"拖动选择需要实心遮盖的区域。",roi:state.rois.length?"点击任意ROI进行选择，拖动绿色边线或控制点微调。":"框选信息区域；建立后可拖动边线和控制点微调。"})[state.mode];
   draw();
 });
-$("#undo").onclick = () => { if (state.mode==="redact") state.redactions.pop(); else if(state.mode==="roi") {state.rois.pop();state.activeRoiIndex=state.rois.length-1;} else {state.crop={x:0,y:0,width:state.sourceImage.naturalWidth,height:state.sourceImage.naturalHeight};state.cropEditable=false;$("#editor-help").textContent="拖动框选最终保留范围。";} draw(); };
-$("#reset-editor").onclick = () => { if (!state.sourceImage) return; state.crop={x:0,y:0,width:state.sourceImage.naturalWidth,height:state.sourceImage.naturalHeight}; state.cropEditable=false;state.cropResize=null;state.redactions=[];state.rois=[];state.activeRoiIndex=-1;state.roiResize=null;$("#editor-help").textContent="拖动框选最终保留范围。";draw(); };
+$("#undo").onclick = () => { if (state.mode==="redact") state.redactions.pop(); else if(state.mode==="roi") {state.rois.pop();state.activeRoiIndex=state.rois.length-1;} else {state.crop={x:0,y:0,width:state.sourceImage.naturalWidth,height:state.sourceImage.naturalHeight};state.cropEditable=false;$("#editor-help").textContent="拖动框选最终保留范围。";} draw();updateReviewPositioningTools(); };
+$("#reset-editor").onclick = () => { if (!state.sourceImage) return; state.crop={x:0,y:0,width:state.sourceImage.naturalWidth,height:state.sourceImage.naturalHeight}; state.cropEditable=false;state.cropResize=null;state.redactions=[];state.rois=[];state.activeRoiIndex=-1;state.roiResize=null;$("#editor-help").textContent="拖动框选最终保留范围。";draw();updateReviewPositioningTools(); };
 
 $("#roi-type").addEventListener("change",()=>{
   if(state.mode!=="roi"||state.activeRoiIndex<0)return;
@@ -911,15 +964,28 @@ async function runAiQueue(){
       try{
         job.status="AI_RUNNING";job.stage="正在连接模型";job.failedStage=null;job.elapsedSeconds=0;job.tokenRate=0;job.processor="IDLE";job.vramBytes=0;renderProcessingQueue();
         monitorAiProgress(job);
-        const extraction=await api(`/api/documents/${job.documentId}/extract`,{method:"POST"});
+        const fieldOnly=job.target==="FIELD_ONLY";
+        const extractionPath=fieldOnly?"/extract-field":"/extract";
+        const extraction=await api(`/api/documents/${job.documentId}${extractionPath}`,{
+          method:"POST",
+          ...(fieldOnly?{headers:{"Content-Type":"application/json"},body:JSON.stringify({
+            field_name:job.fieldName,region_ids:job.regionIds||[],operator:"local-user",
+          })}:{}),
+        });
         job.observationCount=extraction.observation_count||0;job.status="COMPLETED";
+        job.resultObservationId=extraction.observation?.id||job.observationId||null;
         job.tokenRate=extraction.performance?.token_rate||job.tokenRate;
-        job.stage=job.target==="AI_ONLY"?"AI提取已完成":"OCR与AI均已完成";
+        job.stage=fieldOnly?"当前字段优先提取已完成":(job.target==="AI_ONLY"?"AI提取已完成":"OCR与AI均已完成");
       }catch(error){
         job.failedStage="AI";job.status="FAILED";job.stage="AI失败";job.error=error.message;
       }
       renderProcessingQueue();
-      try{await refreshCurrentPatient(job.patientId);}catch(error){job.error=`结果刷新失败：${error.message}`;renderProcessingQueue();}
+      try{
+        await refreshCurrentPatient(job.patientId);
+        if(job.target==="FIELD_ONLY"&&job.resultObservationId){
+          state.selectedObservationId=job.resultObservationId;renderFieldReview();renderObservations();
+        }
+      }catch(error){job.error=`结果刷新失败：${error.message}`;renderProcessingQueue();}
     }
   }finally{state.aiWorkerActive=false;}
 }
@@ -966,7 +1032,7 @@ function renderDocuments() {
     const ocrText=doc.ocr?.full_text||"";
     const hasAi=doc.status==="AI_PROCESSED"||aiDocumentIds.has(doc.id);
     card.innerHTML=`<img src="/api/documents/${doc.id}/image" alt="脱敏病历" title="在上方预览和修改"><div class="document-info"><strong title="${escapeHtml(doc.display_name)}">${escapeHtml(doc.display_name)}</strong><small>${escapeHtml(documentTypeLabels[doc.document_type]||doc.document_type)} · ${doc.regions.length} ROI · ${escapeHtml(doc.status)}</small><div class="document-actions"><button class="tool run-ocr" ${doc.ocr?"disabled":""}>${doc.ocr?"OCR已完成":"OCR识别"}</button><button class="tool run-ai" ${!doc.ocr||hasAi?"disabled":""}>${hasAi?"AI已完成":"AI提取"}</button><button class="tool delete-document">删除此图</button></div>${ocrText?`<details class="ocr-preview"><summary>查看OCR文字</summary><pre>${escapeHtml(ocrText)}</pre></details>`:""}</div>`;
-    card.querySelector("img").onclick=()=>openSavedDocumentPreview(doc.id).catch(error=>toast(error.message));
+    card.querySelector("img").onclick=()=>openSavedDocumentPreview(doc.id,state.selectedObservationId).catch(error=>toast(error.message));
     card.querySelector(".run-ocr").onclick=()=>{const active=state.processingJobs.some(job=>job.documentId===doc.id&&!["COMPLETED","FAILED"].includes(job.status));if(active)return toast("该图片已有后台任务");queueDocuments([doc],"OCR_ONLY");toast("OCR任务已加入后台队列");};
     card.querySelector(".run-ai").onclick=()=>{const active=state.processingJobs.some(job=>job.documentId===doc.id&&!["COMPLETED","FAILED"].includes(job.status));if(active)return toast("该图片已有后台任务");queueDocuments([doc],"AI_ONLY");toast("AI任务已加入后台队列");};
     card.querySelector(".delete-document").onclick=async()=>{if(!confirm(`确定删除“${doc.display_name}”吗？\n该图片的ROI、OCR和AI抽取字段也会删除，审计记录会保留。`))return;try{await api(`/api/documents/${doc.id}`,{method:"DELETE"});toast("脱敏图片已删除");await selectPatient(state.patient.id);}catch(error){toast(error.message);}};
@@ -986,6 +1052,7 @@ function setReviewWorkspace(active,doc=null,observation=null) {
     `<option value="${item.id}">${escapeHtml(item.display_name)} · ${escapeHtml(documentTypeLabels[item.document_type]||item.document_type)}</option>`
   ).join("");
   selector.value=selected;
+  updateReviewPositioningTools();
 }
 
 function loadCurrentFieldLocation(doc,observation) {
@@ -995,6 +1062,12 @@ function loadCurrentFieldLocation(doc,observation) {
       type:region.region_type,label:region.label,
     }));
     state.reviewLocationDirty=false;
+    return;
+  }
+  const draft=state.reviewRegionDrafts[observation?.id]?.[doc.id];
+  if(draft){
+    state.rois=(draft.rois||[]).map(region=>({...region}));
+    state.reviewLocationDirty=Boolean(draft.dirty);
     return;
   }
   const candidate=(observation?.candidate_values||[]).find(item=>item.id===state.reviewCandidateObservationId);
@@ -1036,7 +1109,70 @@ function preloadAdjacentReviewDocuments(documentId) {
   }
 }
 
+function queuePriorityFieldExtraction(document,observation,regionIds){
+  const duplicate=state.processingJobs.some(job=>job.target==="FIELD_ONLY"&&job.documentId===document.id&&job.fieldName===observation.field_name&&!['COMPLETED','FAILED'].includes(job.status));
+  if(duplicate)return toast("当前字段已经在优先队列中");
+  state.processingJobs.unshift({
+    id:`${document.id}-FIELD_ONLY-${Date.now()}`,documentId:document.id,patientId:state.patient.id,
+    name:`${document.display_name} · ${observation.field_label||observation.field_name}`,
+    documentType:document.document_type,target:"FIELD_ONLY",fieldName:observation.field_name,
+    observationId:observation.id,regionIds,status:"AI_QUEUED",stage:"优先等待AI",error:null,observationCount:null,
+  });
+  renderProcessingQueue();runProcessingQueue();
+  toast("当前字段已插入AI优先队列；正在运行的任务完成后将首先处理");
+}
+
+function captureCurrentReviewDraft(){
+  const observation=selectedObservation();
+  if(!observation)return;
+  state.reviewFieldDrafts[observation.id]={
+    value:$("#review-current-value")?.value??observation.current_value??"",
+    note:$("#review-note")?.value??"",
+  };
+}
+
+function captureCurrentRegionDraft(){
+  const observation=selectedObservation();
+  if(!state.reviewMode||!observation||!state.editingDocumentId||!state.sourceImage)return;
+  state.reviewRegionDrafts[observation.id]??={};
+  state.reviewRegionDrafts[observation.id][state.editingDocumentId]={
+    rois:state.rois.map(region=>({...region})),dirty:state.reviewLocationDirty,
+  };
+}
+
+function isDerivedReviewField(fieldName){
+  const value=String(fieldName||"").trim();
+  return [
+    "clinical_t_component","clinical_n_component","clinical_m_component",
+    "pathological_t_component","pathological_n_component","pathological_m_component",
+  ].includes(value)||/_dim[123]_mm$/.test(value);
+}
+
+function updateReviewPositioningTools(){
+  const tools=$("#review-positioning-tools"),observation=selectedObservation(),docs=state.patient?.documents||[];
+  if(!tools)return;
+  tools.hidden=!(state.reviewMode&&observation&&docs.length);
+  if(tools.hidden)return;
+  const select=$("#review-document-select");
+  const activeId=state.editingDocumentId||observation.document_id||docs[0].id;
+  if(docs.some(doc=>doc.id===activeId))select.value=activeId;
+  const index=docs.findIndex(doc=>doc.id===select.value);
+  $("#review-document-previous").disabled=index<=0;
+  $("#review-document-next").disabled=index<0||index>=docs.length-1;
+  const hasImage=Boolean(state.editingDocumentId&&state.sourceImage);
+  const activeDocument=docs.find(doc=>doc.id===state.editingDocumentId);
+  const derived=isDerivedReviewField(observation.field_name);
+  $("#delete-review-position").disabled=!hasImage||state.activeRoiIndex<0||!state.rois[state.activeRoiIndex];
+  $("#reextract-review-field").disabled=derived||!hasImage||!activeDocument?.ocr||state.activeRoiIndex<0||!state.rois[state.activeRoiIndex];
+  $("#review-positioning-status").textContent=derived
+    ? "这是自动整理的只读字段，不能单独重新提取；请找到并重新提取对应的完整TNM或肿块尺寸主字段。"
+    : hasImage
+    ? `当前复核字段：${observation.field_label||observation.field_name}；可切换图片，已画 ${state.rois.length} 个文本定位。`
+    : "请选择患者资料图片，再使用“文本定位”框选证据文字。";
+}
+
 async function openSavedDocumentPreview(documentId,observationId=null) {
+  captureCurrentReviewDraft();captureCurrentRegionDraft();
   const doc=(state.patient?.documents||[]).find(item=>item.id===documentId);
   if(!doc)throw new Error("找不到该记录对应的脱敏图片");
   const observation=(state.patient?.observations||[]).find(item=>item.id===observationId)||selectedObservation();
@@ -1049,6 +1185,7 @@ async function openSavedDocumentPreview(documentId,observationId=null) {
     $$(".observation").forEach(row=>row.classList.toggle("previewing",row.dataset.observationId===observationId));
     draw();
     preloadAdjacentReviewDocuments(doc.id);
+    updateReviewPositioningTools();
     if(observationId!==null)$("#review-evidence-workspace").scrollIntoView({behavior:"smooth",block:"start"});
     return;
   }
@@ -1075,21 +1212,100 @@ async function openSavedDocumentPreview(documentId,observationId=null) {
     :`${doc.display_name}：可继续裁剪、增加遮盖或调整ROI；发生修改后才能覆盖并重新识别。`;
   $$(".observation").forEach(row=>row.classList.toggle("previewing",row.dataset.observationId===observationId));
   preloadAdjacentReviewDocuments(doc.id);
+  updateReviewPositioningTools();
   (observationId!==null?$("#review-evidence-workspace"):$(".import-options")).scrollIntoView({behavior:"smooth",block:"start"});
 }
+
+async function switchReviewDocument(documentId){
+  const observation=selectedObservation();
+  if(!observation||!documentId)return;
+  await openSavedDocumentPreview(documentId,observation.id);
+}
+
+function clearReviewRegionDraft(observationId,documentId){
+  if(!state.reviewRegionDrafts[observationId])return;
+  delete state.reviewRegionDrafts[observationId][documentId];
+  if(!Object.keys(state.reviewRegionDrafts[observationId]).length)delete state.reviewRegionDrafts[observationId];
+}
+
+async function saveCurrentReviewLocation(requireActive=true){
+  const observation=selectedObservation();
+  const document=(state.patient?.documents||[]).find(item=>item.id===state.editingDocumentId);
+  const roi=state.rois[0];
+  if(!observation||!document)throw new Error("请先选择复核字段和资料图片");
+  if(requireActive&&!roi)throw new Error("请先使用“文本定位”框选当前字段的证据文字");
+  if(!roi)return {document,regionIds:[]};
+  const targetId=state.reviewCandidateObservationId||observation.id;
+  const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
+  const replacedRegionIds=new Set([observation.region_id,candidate?.region_id].filter(Boolean));
+  const result=await api(`/api/observations/${targetId}/evidence-location`,{
+    method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({document_id:document.id,x:roi.x,y:roi.y,width:roi.width,height:roi.height,operator:"local-user"}),
+  });
+  for(const doc of state.patient.documents||[])doc.regions=(doc.regions||[]).filter(item=>!replacedRegionIds.has(item.id));
+  document.regions.push(result.region);
+  observation.document_id=result.document_id;observation.region_id=result.region.id;observation.evidence_status=result.evidence_status;
+  if(candidate){candidate.document_id=result.document_id;candidate.region_id=result.region.id;}
+  state.rois=[{...result.region,type:result.region.region_type}];state.activeRoiIndex=0;
+  state.reviewLocationDirty=false;
+  clearReviewRegionDraft(observation.id,document.id);
+  state.editorBaseline=editorRevisionSignature();
+  draw();updateReviewPositioningTools();renderDocuments();
+  return {document,regionIds:[result.region.id],result};
+}
+
+$("#review-document-previous").onclick=()=>{
+  const docs=state.patient?.documents||[],index=docs.findIndex(doc=>doc.id===$("#review-document-select").value);
+  if(index>0)switchReviewDocument(docs[index-1].id).catch(error=>toast(error.message));
+};
+$("#review-document-next").onclick=()=>{
+  const docs=state.patient?.documents||[],index=docs.findIndex(doc=>doc.id===$("#review-document-select").value);
+  if(index>=0&&index<docs.length-1)switchReviewDocument(docs[index+1].id).catch(error=>toast(error.message));
+};
+$("#delete-review-position").onclick=async()=>{
+  const observation=selectedObservation();if(!observation)return;
+  const targetId=state.reviewCandidateObservationId||observation.id;
+  const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
+  const removedRegionIds=new Set([observation.region_id,candidate?.region_id].filter(Boolean));
+  try{
+    await api(`/api/observations/${targetId}/evidence-location`,{method:"DELETE"});
+    for(const doc of state.patient.documents||[])doc.regions=(doc.regions||[]).filter(item=>!removedRegionIds.has(item.id));
+    if(removedRegionIds.has(observation.region_id))observation.region_id=null;
+    if(candidate&&removedRegionIds.has(candidate.region_id))candidate.region_id=null;
+    observation.evidence_status="REJECTED";state.rois=[];state.activeRoiIndex=-1;state.reviewLocationDirty=false;
+    clearReviewRegionDraft(observation.id,state.editingDocumentId);draw();updateReviewPositioningTools();renderDocuments();
+    toast("错误文本定位已删除；原OCR和字段结果保持不变");
+  }catch(error){toast(error.message);}
+};
+$("#reextract-review-field").onclick=async()=>{
+  const observation=selectedObservation();
+  if(!observation)return;
+  if(isDerivedReviewField(observation.field_name))return toast("自动整理字段不能单独重新提取，请重新提取对应的完整主字段");
+  captureCurrentReviewDraft();
+  const button=$("#reextract-review-field");button.disabled=true;
+  try{
+    const {document,regionIds}=await saveCurrentReviewLocation();
+    if(!document.ocr)throw new Error("当前图片尚未完成整页OCR，请先运行OCR识别");
+    queuePriorityFieldExtraction(document,observation,regionIds);
+  }catch(error){toast(error.message);}
+  finally{updateReviewPositioningTools();}
+};
 
 function selectedObservation() {
   return (state.patient?.observations||[]).find(item=>item.id===state.selectedObservationId)||null;
 }
 
 function fieldOrderedObservations() {
-  return (state.patient?.observations||[]).filter(item=>item.status!=="SUPERSEDED").sort((left,right)=>{
+  return [...(state.patient?.observations||[])]
+    .filter(item=>item.status!=="SUPERSEDED")
+    .filter(item=>!String(item.field_name||"").startsWith("additional_malignant_lesion:"))
+    .sort((left,right)=>{
     const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
     if(reviewGroup!==0)return reviewGroup;
     const fieldOrder=(Number(left.field_order) || 0)-(Number(right.field_order) || 0);
     if(fieldOrder!==0)return fieldOrder;
     return String(left.created_at||"").localeCompare(String(right.created_at||""))||String(left.id).localeCompare(String(right.id));
-  });
+    });
 }
 
 function orderedObservations() {
@@ -1120,9 +1336,97 @@ function renderReviewChoices(observation) {
     button.onclick=()=>{
       valueField.value=option.value;
       container.querySelectorAll(".review-choice-option").forEach(item=>item.classList.toggle("active",item===button));
+      captureCurrentReviewDraft();
+      renderConditionalFollowups(observation);
     };
     container.appendChild(button);
   }
+}
+
+function normalizedDependencyValue(value) {
+  const text=String(value??"").trim().toUpperCase();
+  return ({"是":"YES","否":"NO","阳性":"POSITIVE","阴性":"NEGATIVE","不确定":"UNKNOWN"})[text]||text;
+}
+
+function reviewDependencySatisfied(value,dependency) {
+  if(!dependency)return false;
+  const normalized=normalizedDependencyValue(value);
+  if(Object.prototype.hasOwnProperty.call(dependency,"equals")){
+    return normalized===normalizedDependencyValue(dependency.equals);
+  }
+  if(Object.prototype.hasOwnProperty.call(dependency,"contains")){
+    const expected=normalizedDependencyValue(dependency.contains);
+    return String(value??"").split(/[；;，,|]+/).map(normalizedDependencyValue).includes(expected);
+  }
+  return true;
+}
+
+function conditionalFollowupDrafts() {
+  const container=$("#review-conditional-followups");
+  if(!container||container.hidden)return [];
+  return [...container.querySelectorAll("[data-followup-field]")].map(input=>({
+    field_name:input.dataset.followupField,
+    value:String(input.value??"").trim(),
+    initial_value:String(input.dataset.initialValue??"").trim(),
+  }));
+}
+
+function renderConditionalFollowups(observation) {
+  const container=$("#review-conditional-followups");
+  if(!container)return;
+  const parentValue=$("#review-current-value")?.value??observation?.current_value??"";
+  const definitions=(observation?.conditional_followups||[]).filter(item=>reviewDependencySatisfied(parentValue,item.depends_on));
+  container.innerHTML="";
+  container.hidden=!definitions.length;
+  if(!definitions.length)return;
+
+  const heading=document.createElement("div");
+  heading.className="review-conditional-heading";
+  heading.innerHTML="<strong>请继续填写后续问题</strong><small>父项改变后新适用的内容，可在这里直接填写；确实未知时可以留空。</small>";
+  container.appendChild(heading);
+  for(const definition of definitions){
+    const existing=(state.patient?.observations||[]).find(item=>item.field_name===definition.field_name);
+    const label=document.createElement("label");
+    label.textContent=definition.field_label||definition.field_name;
+    let input;
+    const options=Array.isArray(definition.field_options)?definition.field_options:[];
+    if(options.length){
+      input=document.createElement("select");
+      input.appendChild(new Option("请选择 / 未填写",""));
+      for(const option of options)input.appendChild(new Option(option.label,option.value));
+    }else{
+      input=document.createElement("input");
+      input.type=definition.field_type==="integer"||definition.field_type==="number"?"number":"text";
+      input.placeholder=String(definition.field_label||"").includes("补充填空")?"请输入具体数值、百分比或说明":"请输入后续内容";
+    }
+    input.dataset.followupField=definition.field_name;
+    input.value=existing?.current_value??"";
+    input.dataset.initialValue=input.value;
+    label.appendChild(input);
+    container.appendChild(label);
+  }
+}
+
+async function persistConditionalFollowups(drafts,parentObservation) {
+  let saved=0;
+  for(const draft of drafts){
+    if(draft.value===draft.initial_value)continue;
+    const existing=(state.patient?.observations||[]).find(item=>item.field_name===draft.field_name);
+    if(existing&&!existing.virtual_missing){
+      await api(`/api/observations/${existing.id}`,{
+        method:"PATCH",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({value:draft.value,operator:"local-user",reason:`${parentObservation.field_label||parentObservation.field_name}改变后补充后续问题`}),
+      });
+      saved++;
+    }else if(draft.value){
+      await api(`/api/patients/${state.patient.id}/observations`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({field_name:draft.field_name,value:draft.value,raw_text:"人工复核父项后补充",confidence:"LOW",source_mode:"RECORDED",operator:"local-user",reason:`${parentObservation.field_label||parentObservation.field_name}改变后补充后续问题`}),
+      });
+      saved++;
+    }
+  }
+  return saved;
 }
 
 function renderFieldReview() {
@@ -1133,10 +1437,13 @@ function renderFieldReview() {
     const observations=(state.patient?.observations||[]).filter(item=>item.status!=="SUPERSEDED");
     completePanel.hidden=!(state.patient&&observations.length&&observations.every(item=>item.status==="VERIFIED"));
     renderConflictEvidence(null);
+    updateReviewPositioningTools();
     return;
   }
   completePanel.hidden=true;
   const observations=orderedObservations(),index=observations.findIndex(item=>item.id===observation.id);
+  const sameReviewGroup=observations.filter(item=>(item.status==="VERIFIED")===(observation.status==="VERIFIED"));
+  const reviewGroupIndex=sameReviewGroup.findIndex(item=>item.id===observation.id);
   panel.hidden=false;
   $("#review-field-name").textContent=observation.field_label||observation.field_name;
   $("#review-field-key").textContent=`字段名：${observation.field_name}`;
@@ -1145,16 +1452,20 @@ function renderFieldReview() {
   const showTnmBasis=["clinical_stage","pathological_stage"].includes(observation.field_name)&&basis.length>0;
   basisBox.hidden=!showTnmBasis;
   basisBox.innerHTML=showTnmBasis?`<strong>TNM评估依据</strong>${basis.map(item=>`<div><b>${escapeHtml(item.component||"证据")}</b><span>${escapeHtml(item.fact||"")}</span><small>${escapeHtml(item.source_text||"")}</small></div>`).join("")}`:"";
-  $("#review-current-value").value=observation.current_value??"";
+  const draft=state.reviewFieldDrafts[observation.id];
+  $("#review-current-value").value=draft?.value??observation.current_value??"";
   renderReviewChoices(observation);
-  $("#review-note").value="";
+  renderConditionalFollowups(observation);
+  $("#review-note").value=draft?.note??"";
   const evidence=observation.raw_text?` · 证据：${observation.raw_text}`:"";
   const candidates=(observation.candidate_values||[]).filter(item=>item.valid).map(item=>`${item.value}（${item.source}）`).join("；");
   const conflict=observation.candidate_conflict?` · 存在候选冲突：${candidates}`:"";
   const rejected=observation.discarded_candidate_count?` · 已排除 ${observation.discarded_candidate_count} 条非法候选`:"";
   const invalidOnly=observation.invalid_only?" · 当前值不符合问卷值域，请人工修改":"";
   $("#review-field-meta").textContent=`${statusText(observation.status)} · ${observation.confidence}${evidence}${conflict}${rejected}${invalidOnly}`;
-  $("#review-position").textContent=`${index+1} / ${observations.length}`;
+  $("#review-position").textContent=observation.status==="VERIFIED"
+    ? `已审核 ${reviewGroupIndex+1} / ${sameReviewGroup.length}`
+    : `待审核 ${reviewGroupIndex+1} / ${sameReviewGroup.length}`;
   $("#previous-field").disabled=index<=0;
   $("#next-field").disabled=index<0||index>=observations.length-1;
   const verified=observation.status==="VERIFIED";
@@ -1164,6 +1475,7 @@ function renderFieldReview() {
   $("#verify-field").disabled=false;
   $("#verify-field").textContent=verified?"再次确认":"人工确认";
   renderConflictEvidence(observation);
+  updateReviewPositioningTools();
 }
 
 function renderConflictEvidence(observation) {
@@ -1195,10 +1507,16 @@ function renderConflictEvidence(observation) {
 }
 
 async function chooseObservation(observation) {
+  captureCurrentReviewDraft();
   state.selectedObservationId=observation.id;
   state.reviewCandidateObservationId=observation.id;
   renderFieldReview();renderObservations();
-  await openSavedDocumentPreview(observation.document_id,observation.id);
+  if(observation.document_id){
+    await openSavedDocumentPreview(observation.document_id,observation.id);
+  }else{
+    clearEditor();
+    updateReviewPositioningTools();
+  }
 }
 
 async function navigateObservation(offset) {
@@ -1210,6 +1528,11 @@ async function navigateObservation(offset) {
 
 $("#previous-field").onclick=()=>navigateObservation(-1).catch(error=>toast(error.message));
 $("#next-field").onclick=()=>navigateObservation(1).catch(error=>toast(error.message));
+$("#review-current-value").addEventListener("input",()=>{
+  captureCurrentReviewDraft();
+  renderConditionalFollowups(selectedObservation());
+});
+$("#review-note").addEventListener("input",captureCurrentReviewDraft);
 
 $("#review-document-select").onchange=()=>{
   const observation=selectedObservation();if(!observation)return;
@@ -1225,27 +1548,13 @@ $("#review-draw-location").onclick=()=>{
 $("#review-clear-location").onclick=()=>{
   if(!state.reviewMode)return;
   state.rois=[];state.activeRoiIndex=-1;state.drawing=null;state.reviewLocationDirty=true;
-  $("#editor-help").textContent="当前字段定位已清除；可重新框选。";draw();
+  $("#editor-help").textContent="当前字段定位已清除；可重新框选。";draw();updateReviewPositioningTools();
 };
 
 $("#review-save-location").onclick=async(event)=>{
-  const observation=selectedObservation(),roi=state.rois[0];
-  if(!observation||!state.reviewDocumentId)return;
-  if(!roi)return toast("请先框选当前字段的定位");
   const button=event.currentTarget;button.disabled=true;
   try{
-    const targetId=state.reviewCandidateObservationId||observation.id;
-    const result=await api(`/api/observations/${targetId}/evidence-location`,{
-      method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({document_id:state.reviewDocumentId,x:roi.x,y:roi.y,width:roi.width,height:roi.height,operator:"local-user"}),
-    });
-    for(const doc of state.patient.documents||[])doc.regions=(doc.regions||[]).filter(item=>item.id!==observation.region_id);
-    const doc=(state.patient.documents||[]).find(item=>item.id===result.document_id);
-    if(doc)doc.regions.push(result.region);
-    observation.document_id=result.document_id;observation.region_id=result.region.id;observation.evidence_status=result.evidence_status;
-    const candidate=(observation.candidate_values||[]).find(item=>item.id===targetId);
-    if(candidate){candidate.document_id=result.document_id;candidate.region_id=result.region.id;}
-    state.rois=[{...result.region,type:result.region.region_type}];state.activeRoiIndex=0;state.reviewLocationDirty=false;draw();
+    await saveCurrentReviewLocation();
     toast("当前字段定位已保存");
   }catch(error){toast(error.message);}
   finally{button.disabled=false;}
@@ -1254,7 +1563,9 @@ $("#review-save-location").onclick=async(event)=>{
 function nextUnverifiedObservation(afterId) {
   const observations=orderedObservations();
   if(!observations.length)return null;
-  const start=Math.max(0,observations.findIndex(item=>item.id===afterId));
+  const found=observations.findIndex(item=>item.id===afterId);
+  if(found<0)return observations.find(item=>item.status!=="VERIFIED")||null;
+  const start=found;
   for(let offset=1;offset<=observations.length;offset++){
     const candidate=observations[(start+offset)%observations.length];
     if(candidate.status!=="VERIFIED")return candidate;
@@ -1262,31 +1573,85 @@ function nextUnverifiedObservation(afterId) {
   return null;
 }
 
+async function persistReviewObservationValue(observation,value,reason) {
+  if(observation.virtual_missing){
+    return api(`/api/patients/${state.patient.id}/observations`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        field_name:observation.field_name,
+        value,
+        raw_text:value?"人工手动补充":"人工明确留空",
+        confidence:"LOW",
+        source_mode:"RECORDED",
+        operator:"local-user",
+        reason,
+      }),
+    });
+  }
+  return api(`/api/observations/${observation.id}`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({value,reason,operator:"local-user"}),
+  });
+}
+
+async function materializeVirtualObservation(observation,value,reason){
+  if(!observation.virtual_missing)return observation;
+  const created=await persistReviewObservationValue(observation,value,reason);
+  const virtualId=observation.id;
+  await refreshCurrentPatient(state.patient.id);
+  const materialized=(state.patient.observations||[]).find(item=>item.id===created.id)
+    ||(state.patient.observations||[]).find(item=>item.field_name===observation.field_name&&!item.virtual_missing);
+  if(!materialized)throw new Error("人工填写字段已保存，但刷新后未找到该字段");
+  state.selectedObservationId=materialized.id;state.reviewCandidateObservationId=materialized.id;
+  if(state.reviewFieldDrafts[virtualId]){
+    state.reviewFieldDrafts[materialized.id]=state.reviewFieldDrafts[virtualId];
+    delete state.reviewFieldDrafts[virtualId];
+  }
+  return materialized;
+}
+
 $("#save-field-edit").onclick=async()=>{
   const observation=selectedObservation();if(!observation)return;
-  const value=$("#review-current-value").value.trim();
-  if(value===(observation.current_value??""))return toast("字段值没有变化");
+  const value=$("#review-current-value").value.trim(),followups=conditionalFollowupDrafts();
+  const parentChanged=value!==(observation.current_value??"");
+  const followupChanged=followups.some(item=>item.value!==item.initial_value);
+  if(!parentChanged&&!followupChanged)return toast("字段值没有变化");
   const reason=$("#review-note").value.trim()||"人工复核修正";
   try{
-    const result=await api(`/api/observations/${observation.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,reason,operator:"local-user"})});
-    observation.current_value=result.value;observation.status=result.status;
-    renderFieldReview();renderObservations();schedulePatientListRefresh();toast("字段修改已保存");
+    if(parentChanged){
+      await persistReviewObservationValue(observation,value,reason);
+    }
+    const followupSaved=await persistConditionalFollowups(followups,observation);
+    delete state.reviewFieldDrafts[observation.id];
+    await refreshCurrentPatient(state.patient.id);
+    toast(followupSaved?`字段修改及 ${followupSaved} 个后续答案已保存`:"字段修改已保存");
   }catch(error){toast(error.message);}
 };
 
 $("#verify-field").onclick=async()=>{
-  const observation=selectedObservation();if(!observation)return;
+  let observation=selectedObservation();if(!observation)return;
+  const originalObservationId=observation.id;
   const value=$("#review-current-value").value.trim(),note=$("#review-note").value.trim();
+  const followups=conditionalFollowupDrafts();
   const button=$("#verify-field");button.disabled=true;
   try{
+    observation=await materializeVirtualObservation(
+      observation,value,note||(value?"人工复核填写":"人工确认留空")
+    );
+    const followupSaved=await persistConditionalFollowups(followups,observation);
     const roi=state.reviewLocationDirty?state.rois[0]:null;
     const evidence_location=roi&&state.reviewDocumentId
       ?{document_id:state.reviewDocumentId,x:roi.x,y:roi.y,width:roi.width,height:roi.height,operator:"local-user"}
       :null;
     const result=await api(`/api/observations/${observation.id}/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,candidate_id:state.reviewCandidateObservationId,evidence_location,operator:"local-user",note:note||null})});
     applyObservationReviewResult(result);
-    const next=nextUnverifiedObservation(result.id);
-    if(next){await chooseObservation(next);toast("字段已确认，已进入下一条待审核记录");}
+    delete state.reviewFieldDrafts[originalObservationId];delete state.reviewFieldDrafts[observation.id];
+    let next=nextUnverifiedObservation(result.id);
+    if(followupSaved){
+      await refreshCurrentPatient(state.patient.id);
+      next=nextUnverifiedObservation(result.id);
+    }
+    if(next){await chooseObservation(next);toast(followupSaved?`字段已确认，并保存 ${followupSaved} 个后续答案`:"字段已确认，已进入下一条待审核记录");}
     else{
       await refreshCurrentPatient(state.patient.id);
       state.selectedObservationId=null;clearEditor();renderFieldReview();renderObservations();
@@ -1348,10 +1713,13 @@ function renderObservations() {
       list.appendChild(heading);
     }
     const row=document.createElement("div");row.className=`observation${state.selectedObservationId===obs.id?" previewing":""}`;
-    row.dataset.observationId=obs.id;row.tabIndex=0;row.title="点击查看对应图片";
+    row.dataset.observationId=obs.id;row.tabIndex=0;row.title=obs.document_id?"点击查看对应图片":"点击审核该字段";
     const merged=obs.candidate_count>1?` · 已合并 ${obs.candidate_count} 条候选`:"";
     const conflict=obs.candidate_conflict?" · 候选冲突待确认":"";
-    row.innerHTML=`<div><strong>${escapeHtml(obs.field_label||obs.field_name)}：${escapeHtml(obs.current_value)}</strong><small class="observation-field-key">字段名：${escapeHtml(obs.field_name)}</small><small>问卷第 ${Number(obs.field_order)+1} 项 · ${statusText(obs.status)} · ${escapeHtml(obs.confidence)} · AI原值 ${escapeHtml(obs.ai_value)}${merged}${conflict}</small></div><span class="review-record-hint">审核 ›</span>`;
+    const displayedValue=obs.current_value===""
+      ?(obs.status==="VERIFIED"?"已确认留空":"待人工填写或确认留空")
+      :obs.current_value;
+    row.innerHTML=`<div><strong>${escapeHtml(obs.field_label||obs.field_name)}：${escapeHtml(displayedValue)}</strong><small class="observation-field-key">字段名：${escapeHtml(obs.field_name)}</small><small>问卷第 ${Number(obs.field_order)+1} 项 · ${statusText(obs.status)} · ${escapeHtml(obs.confidence)} · AI原值 ${escapeHtml(obs.ai_value)}${merged}${conflict}</small></div><span class="review-record-hint">审核 ›</span>`;
     row.onclick=()=>chooseObservation(obs).catch(error=>toast(error.message));
     row.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();row.click();}};
     list.appendChild(row);

@@ -16,7 +16,7 @@ MAX_LEARNING_IMPORT_BYTES = 20 * 1024 * 1024
 
 @router.get("/api/text-learning")
 def get_text_learning() -> dict[str, object]:
-    profile = build_text_learning_profile(max_fields=1000, max_examples_per_field=50)
+    profile = build_text_learning_profile(max_fields=1000, max_examples_per_field=1_000_000)
     return {
         **profile,
         "type": "bce_text_learning",

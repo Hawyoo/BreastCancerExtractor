@@ -44,6 +44,18 @@ inference:
     - deriving_postoperative_histology_or_pathological_nodes_from_the_operative_note
     - using_pM0_or_ypM0_without_permitted_pathological_metastasis_evidence
     - silently_resolving_conflicting_recorded_stages
+    - deriving_cT_from_bi_rads_category_or_malignancy_probability
+
+clinical_t_rule:
+  inference_source: pretreatment_imaging_tumor_size
+  rule: 推断cT时只依据治疗前影像中目标乳腺恶性肿块的实测大小；BI-RADS分级仅表示影像学可疑程度，不参与T分期，也不能替代肿瘤径线。
+  require_for_inference:
+    - imaging_source
+    - measured_primary_tumor_size_with_unit
+  prohibit:
+    - bi_rads_only_inference
+    - inferring_size_from_bi_rads
+    - using_pathological_tumor_size_as_clinical_t_without_pretreatment_imaging_context
 
 stage_group:
   store: false

@@ -115,23 +115,16 @@
     const boxes = state.smartEvidenceBoxes || [];
     if (!state.sourceImage || !boxes.length) return;
     const sx = scaleX(), sy = scaleY();
+    const highlightColor = "rgba(49,168,122,.18)";
     ctx.save();
-    ctx.font = "12px Segoe UI";
     for (const item of boxes) {
       const r = item.rect;
       const x = r.x * sx, y = r.y * sy, width = r.width * sx, height = r.height * sy;
-      ctx.fillStyle = "rgba(49,168,122,.18)";
-      ctx.strokeStyle = "#1e8f68";
-      ctx.lineWidth = 3;
+      ctx.fillStyle = highlightColor;
+      ctx.strokeStyle = highlightColor;
+      ctx.lineWidth = 1;
       ctx.fillRect(x, y, width, height);
       ctx.strokeRect(x, y, width, height);
-      const label = `文本定位 ${Math.round(item.score * 100)}% · L${item.line_id}`;
-      const labelWidth = Math.max(92, ctx.measureText(label).width + 10);
-      const labelY = Math.max(0, y - 20);
-      ctx.fillStyle = "rgba(255,255,255,.92)";
-      ctx.fillRect(x, labelY, labelWidth, 18);
-      ctx.fillStyle = "#1e6f55";
-      ctx.fillText(label, x + 5, labelY + 13);
     }
     ctx.restore();
   }

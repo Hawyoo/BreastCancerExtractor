@@ -136,6 +136,114 @@ def test_revising_roi_invalidates_results_and_creates_a_new_ocr_version(client, 
     assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
 
 
+def test_saving_review_text_regions_preserves_ocr_and_observations(client, monkeypatch):
+    patient = create_patient(client)
+    uploaded = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("sanitized.png", make_image(), "image/png")},
+        data={"display_name": "免疫组化-第1页", "document_type": "IHC",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+
+    async def fake_ocr(_):
+        return {
+            "engine": "PaddleOCR", "version": "test", "full_text": "HER-2：2+",
+            "lines": [{"text": "HER-2：2+", "score": 0.98, "box": [2, 4, 20, 10]}],
+        }
+
+    monkeypatch.setattr("app.main.recognize_image", fake_ocr)
+    assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
+    observation = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "document_id": uploaded["id"], "field_name": "primary_her2", "value": "POSITIVE",
+            "raw_text": "HER-2：2+", "confidence": "HIGH",
+        },
+    ).json()
+
+    saved = client.put(
+        f"/api/documents/{uploaded['id']}/text-regions",
+        json={
+            "operator": "reviewer01",
+            "regions": [{
+                "region_type": "FIELD_EVIDENCE", "label": "primary_her2",
+                "x": 1, "y": 3, "width": 21, "height": 9,
+            }],
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["region_count"] == 1
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    assert detail["documents"][0]["ocr"]["full_text"] == "HER-2：2+"
+    assert detail["observations"][0]["id"] == observation["id"]
+    assert detail["observations"][0]["current_value"] == "POSITIVE"
+    assert detail["audit_log"][0]["operation"] == "USER_UPDATE_TEXT_REGIONS"
+
+
+def test_manual_position_reextracts_only_current_field(client, monkeypatch):
+    patient = create_patient(client)
+    uploaded = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("sanitized.png", make_image(), "image/png")},
+        data={"display_name": "免疫组化-第1页", "document_type": "IHC",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+
+    async def fake_ocr(_):
+        return {
+            "engine": "PaddleOCR", "version": "test", "full_text": "ER 90%\nHER-2：2+",
+            "lines": [
+                {"text": "ER 90%", "score": 0.97, "box": [2, 1, 20, 3]},
+                {"text": "HER-2：2+", "score": 0.98, "box": [2, 6, 20, 11]},
+            ],
+        }
+
+    async def fake_models():
+        return [{"name": "local-model", "digest": "digest-1"}]
+
+    captured = {}
+
+    async def fake_extract(_model, prompt, _progress=None, **_options):
+        captured["prompt"] = prompt
+        captured["options"] = _options
+        return {"observations": [{
+            "field_name": "primary_her2", "value": "2+", "raw_text": "HER-2：2+",
+            "confidence": "HIGH", "source_mode": "RECORDED", "inference_basis": [],
+        }]}
+
+    monkeypatch.setattr("app.main.recognize_image", fake_ocr)
+    monkeypatch.setattr("app.main.list_extraction_models", fake_models)
+    monkeypatch.setattr("app.main.extract_structured", fake_extract)
+    assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
+    saved = client.put(
+        f"/api/documents/{uploaded['id']}/text-regions",
+        json={"regions": [{
+            "region_type": "FIELD_EVIDENCE", "label": "primary_her2",
+            "x": 1, "y": 5, "width": 21, "height": 8,
+        }]},
+    ).json()
+
+    extracted = client.post(
+        f"/api/documents/{uploaded['id']}/extract-field",
+        json={"field_name": "primary_her2", "region_ids": [saved["regions"][0]["id"]]},
+    )
+    assert extracted.status_code == 200, extracted.text
+    assert extracted.json()["observation"]["value"] == "2+"
+    assert "人工复核现场定位：字段 primary_her2，最高优先级" in captured["prompt"]
+    assert "HER-2：2+" in captured["prompt"]
+    assert "- key: primary_her2" in captured["prompt"]
+    assert "- key: primary_er\n" not in captured["prompt"]
+    assert captured["options"]["think"] is False
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    assert detail["documents"][0]["ocr"]["full_text"] == "ER 90%\nHER-2：2+"
+    assert len(detail["observations"]) == 1
+    assert detail["observations"][0]["field_name"] == "primary_her2"
+    assert detail["observations"][0]["current_value"] == "2+"
+    assert detail["audit_log"][0]["operation"] == "AI_REEXTRACT_FIELD"
+
+
 def test_document_can_be_selectively_deleted_with_audit(client):
     patient = create_patient(client)
     uploaded = client.post(
@@ -475,6 +583,45 @@ def test_verification_atomically_saves_the_unsaved_review_roi(client):
     assert "USER_VERIFY" in operations
 
 
+def test_deleting_manual_review_location_removes_only_its_atomic_region(client):
+    patient = create_patient(client)
+    document = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("admission.png", make_image(), "image/png")},
+        data={
+            "display_name": "入院记录",
+            "document_type": "ADMISSION",
+            "sanitization": metadata(),
+            "regions": "[]",
+        },
+    ).json()
+    observation = client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={
+            "field_name": "family_history_detail",
+            "value": "母亲乳腺癌",
+            "confidence": "HIGH",
+            "document_id": document["id"],
+        },
+    ).json()
+    saved = client.put(
+        f"/api/observations/{observation['id']}/evidence-location",
+        json={"document_id": document["id"], "x": 2, "y": 3, "width": 9, "height": 6},
+    ).json()
+
+    deleted = client.delete(f"/api/observations/{observation['id']}/evidence-location")
+    assert deleted.status_code == 200
+    assert deleted.json()["removed_region_id"] == saved["region"]["id"]
+
+    detail = client.get(f"/api/patients/{patient['id']}").json()
+    stored = next(item for item in detail["observations"] if item["id"] == observation["id"])
+    assert stored["region_id"] is None
+    assert stored["evidence_status"] == "REJECTED"
+    assert saved["region"]["id"] not in {
+        region["id"] for item in detail["documents"] for region in item["regions"]
+    }
+
+
 def test_all_patient_preview_and_excel_compatible_chinese_csv(client):
     patient = client.post("/api/patients", json={"patient_code": "0123456"}).json()
     client.post(
@@ -518,7 +665,7 @@ def test_all_patient_preview_and_excel_compatible_chinese_csv(client):
     assert "filename*=UTF-8''" in exported.headers["content-disposition"]
 
 
-def test_conditional_question_exports_na_when_prerequisite_is_no(client):
+def test_neoadjuvant_question_exports_blank_when_prerequisite_is_no(client):
     patient = create_patient(client)
     client.post(
         f"/api/patients/{patient['id']}/observations",
@@ -529,7 +676,45 @@ def test_conditional_question_exports_na_when_prerequisite_is_no(client):
         json={"field_name": "neoadjuvant_cycles", "value": "6", "confidence": "HIGH"},
     )
     preview = client.get("/api/data-preview").json()
-    assert preview["rows"][0]["values"]["neoadjuvant_cycles"] == "NA"
+    assert preview["rows"][0]["values"]["neoadjuvant_cycles"] == ""
+    assert preview["rows"][0]["statuses"]["neoadjuvant_cycles"] == "NOT_APPLICABLE"
+
+
+def test_all_nested_neoadjuvant_followups_stay_blank_when_treatment_was_not_received(client):
+    patient = create_patient(client)
+    client.post(
+        f"/api/patients/{patient['id']}/observations",
+        json={"field_name": "neoadjuvant_received", "value": "NO", "confidence": "HIGH"},
+    )
+    preview = client.get("/api/data-preview").json()["rows"][0]
+    downstream = {
+        "neoadjuvant_regimen",
+        "neoadjuvant_cycles",
+        "post_neoadj_us_available",
+        "post_neoadj_us_size_mm",
+        "post_neoadj_us_tumor_response",
+        "post_neoadj_us_nodes",
+        "post_neoadj_us_nodes_response",
+        "post_neoadj_mri_available",
+        "post_neoadj_mri_size_mm",
+        "post_neoadj_mri_tumor_response",
+        "post_neoadj_mri_nodes",
+        "post_neoadj_mri_nodes_response",
+        "post_neoadj_pcr",
+        "post_neoadj_mp_grade",
+        "post_neoadj_rcb_grade",
+    }
+    for field_name in downstream:
+        assert preview["values"][field_name] == "", field_name
+        assert preview["statuses"][field_name] == "NOT_APPLICABLE", field_name
+
+    exported = client.get("/api/data-preview.csv")
+    csv_rows = list(csv.reader(io.StringIO(exported.content.decode("utf-8-sig"))))
+    header, data = csv_rows[0], csv_rows[1]
+    catalog = questionnaire_catalog()
+    labels = {field["key"]: field["label"] for field in catalog}
+    for field_name in downstream:
+        assert data[header.index(labels[field_name])] == "", field_name
 
 
 def test_inapplicable_conditional_fields_leave_review_queue_and_return_when_parent_changes(client):
@@ -549,7 +734,8 @@ def test_inapplicable_conditional_fields_leave_review_queue_and_return_when_pare
     assert "neoadjuvant_cycles" in detail["conditional_na_fields"]
     assert detail["status"] == "VERIFIED"
     preview = client.get("/api/data-preview?verified_only=true").json()
-    assert preview["rows"][0]["values"]["neoadjuvant_cycles"] == "NA"
+    assert preview["rows"][0]["values"]["neoadjuvant_cycles"] == ""
+    assert preview["rows"][0]["statuses"]["neoadjuvant_cycles"] == "NOT_APPLICABLE"
 
     edited = client.patch(
         f"/api/observations/{parent['id']}",
@@ -602,7 +788,10 @@ def test_admission_without_metastasis_mention_creates_reviewable_default_no(clie
     async def fake_models():
         return [{"name": "local-model", "digest": "digest-1"}]
 
+    extraction_calls = []
+
     async def fake_extract(_model, _prompt, _progress=None, **_options):
+        extraction_calls.append(_options)
         return {"observations": []}
 
     monkeypatch.setattr("app.main.recognize_image", fake_ocr)
@@ -610,6 +799,7 @@ def test_admission_without_metastasis_mention_creates_reviewable_default_no(clie
     monkeypatch.setattr("app.main.extract_structured", fake_extract)
     assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
     assert client.post(f"/api/documents/{uploaded['id']}/extract").status_code == 200
+    assert extraction_calls == [{"think": False}]
 
     detail = client.get(f"/api/patients/{patient['id']}").json()
     observation = next(item for item in detail["observations"] if item["field_name"] == "metastatic_at_presentation")
@@ -617,6 +807,46 @@ def test_admission_without_metastasis_mention_creates_reviewable_default_no(clie
     assert observation["source_mode"] == "INFERRED"
     assert observation["status"] == "REVIEW_REQUIRED"
     assert "AI_DEFAULT" in [item["operation"] for item in detail["audit_log"]]
+
+
+def test_explicit_pathological_tnm_runs_one_focused_staging_pass(client, monkeypatch):
+    patient = create_patient(client)
+    uploaded = client.post(
+        f"/api/patients/{patient['id']}/documents",
+        files={"image": ("sanitized.png", make_image(), "image/png")},
+        data={"display_name": "术后病理", "document_type": "SURGICAL_PATHOLOGY",
+              "sanitization": metadata(), "regions": "[]"},
+    ).json()
+
+    async def fake_ocr(_):
+        return {"engine": "PaddleOCR", "version": "test", "full_text": "术后病理：ypT1cN0M0", "lines": []}
+
+    async def fake_models():
+        return [{"name": "local-model", "digest": "digest-1"}]
+
+    calls = []
+
+    async def fake_extract(_model, prompt, _progress=None, **options):
+        calls.append({"prompt": prompt, **options})
+        if not options.get("think"):
+            return {"observations": []}
+        return {"observations": [{
+            "field_name": "pathological_stage", "value": "ypT1cN0M0", "raw_text": "ypT1cN0M0",
+            "confidence": "HIGH", "source_mode": "RECORDED", "inference_basis": [],
+        }]}
+
+    monkeypatch.setattr("app.main.recognize_image", fake_ocr)
+    monkeypatch.setattr("app.main.list_extraction_models", fake_models)
+    monkeypatch.setattr("app.main.extract_structured", fake_extract)
+    assert client.post(f"/api/documents/{uploaded['id']}/ocr").status_code == 200
+    assert client.post(f"/api/documents/{uploaded['id']}/extract").status_code == 200
+    assert [call["think"] for call in calls] == [False, True]
+    assert "- key: pathological_stage" in calls[1]["prompt"]
+    assert "- key: clinical_stage\n" not in calls[1]["prompt"]
+
+    observations = client.get(f"/api/patients/{patient['id']}").json()["observations"]
+    assert observations[0]["field_name"] == "pathological_stage"
+    assert observations[0]["current_value"] == "ypT1CN0M0"
 
 
 def test_inferred_tnm_requires_provenance_and_review(client):
