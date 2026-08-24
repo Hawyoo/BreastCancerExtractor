@@ -45,6 +45,21 @@ def test_virtual_review_field_is_materialized_before_position_save_and_reextract
     assert "const targetId=candidate?.id||observation.id" in script
 
 
+def test_field_reextraction_replaces_current_value_instead_of_restoring_stale_draft():
+    script = _app_script()
+    ai_worker = script[
+        script.index("async function runAiQueue") : script.index("function runProcessingQueue")
+    ]
+    assert "job.resultObservationId=extraction.observation?.id||null" in ai_worker
+    assert "job.resultValue=extraction.observation?.value??null" in ai_worker
+    assert "delete state.reviewFieldDrafts[job.observationId]" in ai_worker
+    assert "delete state.reviewFieldDrafts[job.resultObservationId]" in ai_worker
+    assert "state.reviewCandidateObservationId=job.resultObservationId" in ai_worker
+    assert "updated.current_value=job.resultValue;updated.ai_value=job.resultValue" in ai_worker
+    assert "重新提取结果已覆盖当前值" in ai_worker
+    assert 'else if(job.target==="FIELD_ONLY"&&job.resultMessage)' in ai_worker
+
+
 def test_derived_readonly_fields_cannot_enter_field_reextract_queue():
     script = _app_script()
     derived = (ROOT / "app/static/derived_fields.js").read_text(encoding="utf-8")

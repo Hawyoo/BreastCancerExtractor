@@ -975,7 +975,9 @@ async function runAiQueue(){
           })}:{}),
         });
         job.observationCount=extraction.observation_count||0;job.status="COMPLETED";
-        job.resultObservationId=extraction.observation?.id||job.observationId||null;
+        job.resultObservationId=extraction.observation?.id||null;
+        job.resultValue=extraction.observation?.value??null;
+        job.resultMessage=extraction.message||null;
         job.tokenRate=extraction.performance?.token_rate||job.tokenRate;
         job.stage=fieldOnly?"当前字段优先提取已完成":(forceAi?"AI重新提取已完成":(job.target==="AI_ONLY"?"AI提取已完成":"OCR与AI均已完成"));
       }catch(error){
@@ -983,9 +985,22 @@ async function runAiQueue(){
       }
       renderProcessingQueue();
       try{
+        if(job.target==="FIELD_ONLY"&&job.resultObservationId){
+          delete state.reviewFieldDrafts[job.observationId];
+          delete state.reviewFieldDrafts[job.resultObservationId];
+        }
         await refreshCurrentPatient(job.patientId);
         if(job.target==="FIELD_ONLY"&&job.resultObservationId){
-          state.selectedObservationId=job.resultObservationId;renderFieldReview();renderObservations();
+          state.selectedObservationId=job.resultObservationId;
+          state.reviewCandidateObservationId=job.resultObservationId;
+          const updated=(state.patient?.observations||[]).find(item=>item.id===job.resultObservationId);
+          if(updated&&job.resultValue!==null){
+            updated.current_value=job.resultValue;updated.ai_value=job.resultValue;
+          }
+          renderFieldReview();renderObservations();
+          toast("重新提取结果已覆盖当前值");
+        }else if(job.target==="FIELD_ONLY"&&job.resultMessage){
+          toast(job.resultMessage);
         }
       }catch(error){job.error=`结果刷新失败：${error.message}`;renderProcessingQueue();}
     }
