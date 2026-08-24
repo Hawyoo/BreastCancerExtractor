@@ -242,6 +242,7 @@
           button.classList.toggle("active");
           const active = [...container.querySelectorAll(".review-choice-option.active")].map(item => item.dataset.value);
           valueField.value = encodeMultiValue(active, options);
+          valueField.dispatchEvent(new Event("input", {bubbles: true}));
         };
         container.appendChild(button);
       }

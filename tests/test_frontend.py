@@ -262,8 +262,8 @@ def test_review_confirmation_updates_locally_and_reuses_the_same_document_image(
     assert "evidence_location" in verify_handler
     assert "state.reviewLocationDirty?state.rois[0]:null" in verify_handler
     assert 'method:"PATCH"' not in verify_handler
-    assert verify_handler.index("nextUnverifiedObservation(result.id)") < verify_handler.index(
-        "refreshCurrentPatient(state.patient.id)"
+    assert verify_handler.index("refreshCurrentPatient(state.patient.id)") < verify_handler.index(
+        "nextUnverifiedObservation(result.id)"
     )
     assert "state.editingDocumentId===doc.id&&state.sourceImage" in javascript
     assert "schedulePatientListRefresh()" in javascript
@@ -316,23 +316,36 @@ def test_verified_fields_remain_editable_and_can_be_confirmed_again():
     assert 'verified?"再次确认":"人工确认"' in javascript
 
 
-def test_review_navigation_groups_by_source_without_changing_display_field_order():
+def test_review_navigation_uses_clinical_field_order_instead_of_source_page_order():
     html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
     assert 'id="review-field-key"' in html
     assert "function fieldOrderedObservations()" in javascript
     assert "function orderedObservations()" in javascript
-    assert "documentOrder.get(reviewDocumentId(left))" in javascript
     assert "const documentId=reviewDocumentId(observation)" in javascript
-    assert "const documentOrder=new Map" in javascript
+    assert "return fieldOrderedObservations();" in javascript
+    assert "documentOrder.get(reviewDocumentId(left))" not in javascript
     assert 'left.status==="VERIFIED"' in javascript
-    assert "left.field_order" in javascript
+    assert "left.review_order??left.field_order" in javascript
     assert 'reviewGroup==="VERIFIED"?"已人工审核":"待人工审核"' in javascript
     assert 'const observations=fieldOrderedObservations();$("#observation-count")' in javascript
     assert 'observation.field_label||observation.field_name' in javascript
     assert 'class="observation-field-key">字段名：' in javascript
     assert "observation.candidate_values" in javascript
     assert "已合并 ${obs.candidate_count} 条候选" in javascript
+
+
+def test_yes_no_choice_rebuilds_conditional_review_state_through_input_event():
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+    choices = javascript[
+        javascript.index("function renderReviewChoices") : javascript.index("function normalizedDependencyValue")
+    ]
+    verify = javascript[
+        javascript.index('$("#verify-field").onclick') : javascript.index('document.addEventListener("keydown"')
+    ]
+    assert 'valueField.dispatchEvent(new Event("input",{bubbles:true}))' in choices
+    assert "await refreshCurrentPatient(state.patient.id)" in verify
+    assert verify.index("await refreshCurrentPatient") < verify.index("nextUnverifiedObservation")
 
 
 def test_review_shortcuts_are_deliberate_and_do_not_use_arrow_keys():

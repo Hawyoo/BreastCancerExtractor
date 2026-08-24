@@ -1363,22 +1363,14 @@ function fieldOrderedObservations() {
     .sort((left,right)=>{
     const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
     if(reviewGroup!==0)return reviewGroup;
-    const fieldOrder=(Number(left.field_order) || 0)-(Number(right.field_order) || 0);
+    const fieldOrder=(Number(left.review_order??left.field_order) || 0)-(Number(right.review_order??right.field_order) || 0);
     if(fieldOrder!==0)return fieldOrder;
     return String(left.created_at||"").localeCompare(String(right.created_at||""))||String(left.id).localeCompare(String(right.id));
     });
 }
 
 function orderedObservations() {
-  const documentOrder=new Map((state.patient?.documents||[]).map((doc,index)=>[doc.id,index]));
-  return fieldOrderedObservations().sort((left,right)=>{
-    const reviewGroup=Number(left.status==="VERIFIED")-Number(right.status==="VERIFIED");
-    if(reviewGroup!==0)return reviewGroup;
-    const sourceOrder=(documentOrder.get(reviewDocumentId(left))??Number.MAX_SAFE_INTEGER)
-      -(documentOrder.get(reviewDocumentId(right))??Number.MAX_SAFE_INTEGER);
-    if(sourceOrder!==0)return sourceOrder;
-    return (Number(left.field_order)||0)-(Number(right.field_order)||0);
-  });
+  return fieldOrderedObservations();
 }
 
 function renderReviewChoices(observation) {
@@ -1397,8 +1389,7 @@ function renderReviewChoices(observation) {
     button.onclick=()=>{
       valueField.value=option.value;
       container.querySelectorAll(".review-choice-option").forEach(item=>item.classList.toggle("active",item===button));
-      captureCurrentReviewDraft();
-      renderConditionalFollowups(observation);
+      valueField.dispatchEvent(new Event("input",{bubbles:true}));
     };
     container.appendChild(button);
   }
@@ -1705,14 +1696,13 @@ $("#verify-field").onclick=async()=>{
     const result=await api(`/api/observations/${observation.id}/verify`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value,candidate_id:state.reviewCandidateObservationId,evidence_location,operator:"local-user",note:note||null})});
     applyObservationReviewResult(result);
     delete state.reviewFieldDrafts[originalObservationId];delete state.reviewFieldDrafts[observation.id];
-    let next=nextUnverifiedObservation(result.id);
-    if(followupSaved){
-      await refreshCurrentPatient(state.patient.id);
-      next=nextUnverifiedObservation(result.id);
-    }
+    // A parent answer can reveal or hide an entire conditional subtree. Always
+    // rebuild the patient review queue before choosing the next field so a
+    // newly selected YES proceeds directly into its first detail question.
+    await refreshCurrentPatient(state.patient.id);
+    const next=nextUnverifiedObservation(result.id);
     if(next){await chooseObservation(next);toast(followupSaved?`字段已确认，并保存 ${followupSaved} 个后续答案`:"字段已确认，已进入下一条待审核记录");}
     else{
-      await refreshCurrentPatient(state.patient.id);
       state.selectedObservationId=null;clearEditor();renderFieldReview();renderObservations();
       $("#review-complete-panel").scrollIntoView({behavior:"smooth",block:"start"});
       toast("当前患者全部字段已处理完毕");

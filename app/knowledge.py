@@ -86,6 +86,95 @@ QUESTIONNAIRE_FIELD_OVERRIDES = {
 }
 
 
+def _clinical_review_bucket(field: dict) -> int:
+    """Return the user-approved clinical workflow bucket for field review.
+
+    Export order remains the questionnaire order. This independent order keeps
+    review clinically coherent even when source pages were imported randomly.
+    """
+    key = str(field["key"])
+    group = str(field.get("group") or "other")
+    if group == "demographics":
+        return 100
+    if group == "lifestyle":
+        return 110
+    if group == "reproductive_history":
+        return 120
+    if group == "family_history":
+        return 130
+    if key.startswith("prior_breast_surgery"):
+        return 140
+    if group == "medical_history":
+        return 150
+    if group == "diagnosis":
+        return 160
+    if group == "pretreatment_ultrasound":
+        return 200
+    if group == "pretreatment_mri":
+        return 210
+    if group == "pretreatment_mammography":
+        return 220
+    if group == "pretreatment_imaging":
+        return 230
+    if key == "clinical_stage" or key.startswith("clinical_"):
+        return 240
+    if group == "primary_biopsy":
+        return 300
+    if group == "node_biopsy":
+        return 310
+    if group == "metastasis_biopsy":
+        return 320
+    if group == "neoadjuvant":
+        return 400
+    if group == "post_neoadjuvant_imaging":
+        return 410
+    if group == "surgery":
+        return 500
+    if group == "surgical_pathology":
+        return 510
+    if group == "biomarkers":
+        return 520
+    if group == "treatment_response":
+        return 530
+    if key == "pathological_stage" or key.startswith("pathological_"):
+        return 540
+    if key.startswith("postoperative_chemotherapy"):
+        return 600
+    if key == "postoperative_radiotherapy":
+        return 610
+    if key.startswith("postoperative_endocrine"):
+        return 620
+    if key.startswith("postoperative_targeted"):
+        return 630
+    if key.startswith("postoperative_immunotherapy"):
+        return 640
+    if group == "palliative_treatment":
+        return 650
+    if key.startswith("recurrence"):
+        return 700
+    if key.startswith("followup_metastasis"):
+        return 710
+    if key.startswith("second_primary"):
+        return 720
+    if key.startswith("death"):
+        return 730
+    if key == "last_visit_date":
+        return 740
+    if group == "other":
+        return 750
+    return 800
+
+
+@lru_cache
+def questionnaire_review_order() -> dict[str, int]:
+    fields = questionnaire_catalog()
+    ordered = sorted(
+        enumerate(fields),
+        key=lambda item: (_clinical_review_bucket(item[1]), item[0]),
+    )
+    return {field["key"]: index for index, (_, field) in enumerate(ordered)}
+
+
 @lru_cache
 def questionnaire_catalog() -> list[dict]:
     path = settings.knowledge_path / "schema" / "cohort_fields.yaml"
@@ -222,9 +311,11 @@ def field_catalog() -> list[dict]:
 @lru_cache
 def questionnaire_field_index() -> dict[str, dict]:
     option_index = questionnaire_option_index()
+    review_order = questionnaire_review_order()
     return {
         field["key"]: {
             "field_order": index,
+            "review_order": review_order[field["key"]],
             "field_label": field["label"],
             "field_group": field.get("group", "other"),
             "field_type": field.get("type", "string"),

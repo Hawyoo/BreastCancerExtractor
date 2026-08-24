@@ -109,6 +109,16 @@ imaging:
     rule: 淋巴结情况按影像报告如实填写，保留原始描述；结构化判断不得替换证据原文。
 
 treatment_classification:
+  regimen_naming:
+    chemotherapy:
+      target_fields: [neoadjuvant_regimen, postoperative_chemotherapy_regimen]
+      rule: 有公认方案简称时优先输出规范字母简称，例如EC-T；不要优先展开为冗长药物通用名。
+    targeted:
+      target_fields: [postoperative_targeted_regimen]
+      rule: 有公认方案简称时优先输出规范字母简称，例如HP；不要优先展开为冗长药物通用名。
+    endocrine:
+      target_fields: [postoperative_endocrine_regimen]
+      rule: 优先输出药物中文原名，不优先使用英文名或字母缩写。
   antitumor_immunotherapy:
     target_fields: [postoperative_immunotherapy, postoperative_immunotherapy_regimen, postoperative_immunotherapy_cycles]
     positive_evidence:

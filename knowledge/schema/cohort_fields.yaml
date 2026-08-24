@@ -114,7 +114,7 @@ fields:
   - {key: node_molecular_subtype, label: 淋巴结分子分型, group: node_biopsy, type: enum, values: [LUMINAL_A, LUMINAL_B, HER2_ENRICHED, TRIPLE_NEGATIVE, UNKNOWN], form_type: single_choice, derivation: allowed_with_rules, depends_on: {field: node_biopsy_performed, equals: 'YES', otherwise: NOT_APPLICABLE}}
 
   # 转移灶穿刺
-  - {key: metastasis_biopsy_performed, label: 是否行转移灶穿刺活检, group: metastasis_biopsy, type: yes_no_unknown}
+  - {key: metastasis_biopsy_performed, label: 是否行转移灶穿刺活检, group: metastasis_biopsy, type: yes_no_unknown, depends_on: {field: metastatic_at_presentation, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: metastasis_pathology_type, label: 转移灶病理类型, group: metastasis_biopsy, type: coded_string, depends_on: {field: metastasis_biopsy_performed, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: metastasis_pathology_grade, label: 转移灶病理分级, group: metastasis_biopsy, type: enum, values: ['1', '2', '3', UNKNOWN, NOT_APPLICABLE], normalization: arabic_integer_single_value, depends_on: {field: metastasis_biopsy_performed, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: metastasis_er, label: 转移灶免疫组化ER, group: metastasis_biopsy, type: biomarker_status, depends_on: {field: metastasis_biopsy_performed, equals: 'YES', otherwise: NOT_APPLICABLE}}
@@ -129,7 +129,7 @@ fields:
 
   # 新辅助治疗与治疗后影像
   - {key: neoadjuvant_received, label: 术前是否接受新辅助治疗, group: neoadjuvant, type: yes_no_unknown}
-  - {key: neoadjuvant_regimen, label: 新辅助治疗方案, group: neoadjuvant, type: regimen, depends_on: {field: neoadjuvant_received, equals: 'YES', otherwise: NOT_APPLICABLE}}
+  - {key: neoadjuvant_regimen, label: 新辅助治疗方案, group: neoadjuvant, type: regimen, description: 化疗和靶向方案优先保存规范字母简称（如EC-T、HP），内分泌药物优先保存中文原名。, depends_on: {field: neoadjuvant_received, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: neoadjuvant_cycles, label: 新辅助治疗周期, group: neoadjuvant, type: integer, depends_on: {field: neoadjuvant_received, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: post_neoadj_us_available, label: 新辅助治疗后是否有超声结果, group: post_neoadjuvant_imaging, type: yes_no_unknown, depends_on: {field: neoadjuvant_received, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: post_neoadj_us_size_mm, label: 新辅助治疗后超声肿块大小（mm）, group: post_neoadjuvant_imaging, type: measurement_3d, unit: mm, dimensions: [length, width, height], optional_dimensions: [height], depends_on: {field: post_neoadj_us_available, equals: 'YES', otherwise: NOT_APPLICABLE}}
@@ -207,15 +207,15 @@ fields:
   # 术后及姑息治疗
   - {key: postoperative_radiotherapy, label: 术后是否放疗, group: adjuvant_treatment, type: yes_no_unknown}
   - {key: postoperative_chemotherapy, label: 术后是否化疗, group: adjuvant_treatment, type: yes_no_unknown}
-  - {key: postoperative_chemotherapy_regimen, label: 术后化疗方案, group: adjuvant_treatment, type: regimen, depends_on: {field: postoperative_chemotherapy, equals: 'YES', otherwise: NOT_APPLICABLE}}
+  - {key: postoperative_chemotherapy_regimen, label: 术后化疗方案, group: adjuvant_treatment, type: regimen, description: 优先保存规范字母简称（如EC-T），不要优先展开为冗长药物通用名。, depends_on: {field: postoperative_chemotherapy, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_chemotherapy_cycles, label: 术后化疗周期, group: adjuvant_treatment, type: integer, depends_on: {field: postoperative_chemotherapy, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_endocrine, label: 术后是否内分泌治疗, group: adjuvant_treatment, type: yes_no_unknown}
-  - {key: postoperative_endocrine_regimen, label: 术后内分泌治疗方案, group: adjuvant_treatment, type: regimen, depends_on: {field: postoperative_endocrine, equals: 'YES', otherwise: NOT_APPLICABLE}}
+  - {key: postoperative_endocrine_regimen, label: 术后内分泌治疗方案, group: adjuvant_treatment, type: regimen, description: 优先保存药物中文原名，不优先使用英文或字母缩写。, depends_on: {field: postoperative_endocrine, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_immunotherapy, label: 术后是否免疫治疗, group: adjuvant_treatment, type: yes_no_unknown}
   - {key: postoperative_immunotherapy_regimen, label: 术后免疫治疗方案, group: adjuvant_treatment, type: regimen, depends_on: {field: postoperative_immunotherapy, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_immunotherapy_cycles, label: 术后免疫治疗周期, group: adjuvant_treatment, type: integer, depends_on: {field: postoperative_immunotherapy, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_targeted, label: 术后是否靶向治疗, group: adjuvant_treatment, type: yes_no_unknown}
-  - {key: postoperative_targeted_regimen, label: 术后靶向治疗方案, group: adjuvant_treatment, type: regimen, depends_on: {field: postoperative_targeted, equals: 'YES', otherwise: NOT_APPLICABLE}}
+  - {key: postoperative_targeted_regimen, label: 术后靶向治疗方案, group: adjuvant_treatment, type: regimen, description: 优先保存规范字母简称（如HP），不要优先展开为冗长药物通用名。, depends_on: {field: postoperative_targeted, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: postoperative_targeted_cycles, label: 术后靶向治疗周期, group: adjuvant_treatment, type: integer, depends_on: {field: postoperative_targeted, equals: 'YES', otherwise: NOT_APPLICABLE}}
   - {key: palliative_systemic_treatment, label: 是否姑息全身治疗, group: palliative_treatment, type: yes_no_unknown}
   - {key: palliative_systemic_regimen, label: 姑息全身治疗方案, group: palliative_treatment, type: regimen, depends_on: {field: palliative_systemic_treatment, equals: 'YES', otherwise: NOT_APPLICABLE}}

@@ -843,9 +843,10 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                 "field_options": child_metadata.get("field_options", []),
                 "depends_on": dependency,
                 "field_order": child_metadata.get("field_order", len(field_index)),
+                "review_order": child_metadata.get("review_order", len(field_index)),
             })
         for children in conditional_children.values():
-            children.sort(key=lambda item: int(item["field_order"]))
+            children.sort(key=lambda item: int(item["review_order"]))
         fallback_order = len(field_index)
         for observation in observations:
             metadata = field_index.get(observation["field_name"], {})
@@ -855,6 +856,7 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                 inference_basis = []
             observation.update({
                 "field_order": metadata.get("field_order", fallback_order),
+                "review_order": metadata.get("review_order", fallback_order),
                 "field_label": metadata.get("field_label", observation["field_name"]),
                 "field_group": metadata.get("field_group", "other"),
                 "field_type": metadata.get("field_type", "string"),
@@ -869,12 +871,6 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
             observations, field_index
         )
         if review_blank_parents:
-            dependency_parents = {
-                str(metadata["depends_on"].get("field") or "")
-                for metadata in field_index.values()
-                if metadata.get("depends_on")
-            }
-
             def blank_parent_is_applicable(field_name: str, stack: set[str] | None = None) -> bool:
                 stack = set(stack or ())
                 if field_name in stack:
@@ -896,10 +892,6 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                 if metadata.get("capture") in {"manual_restricted", "derived_readonly"}:
                     continue
                 if metadata.get("derived_from"):
-                    continue
-                is_root_question = not metadata.get("depends_on")
-                is_conditional_parent = field_name in dependency_parents
-                if not (is_root_question or is_conditional_parent):
                     continue
                 if not blank_parent_is_applicable(field_name):
                     continue
@@ -925,6 +917,7 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                     "created_at": patient.get("created_at") or "",
                     "updated_at": patient.get("updated_at") or "",
                     "field_order": metadata.get("field_order", fallback_order),
+                    "review_order": metadata.get("review_order", fallback_order),
                     "field_label": metadata.get("field_label", field_name),
                     "field_group": metadata.get("field_group", "other"),
                     "field_type": metadata.get("field_type", "string"),
@@ -941,7 +934,7 @@ def get_patient(patient_id: int, review_blank_parents: bool = False) -> dict[str
                 })
         observations.sort(key=lambda item: (
             item["status"] == "VERIFIED",
-            item["field_order"],
+            item.get("review_order", item["field_order"]),
             item["created_at"],
             item["id"],
         ))

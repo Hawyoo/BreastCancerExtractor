@@ -57,6 +57,9 @@ def test_manual_parent_answer_reveals_only_applicable_conditional_parent(client)
     by_field = {item["field_name"]: item for item in review["observations"]}
 
     assert by_field["primary_biopsy_performed"]["status"] == "VERIFIED"
+    assert by_field["primary_pathology_type"]["virtual_missing"] is True
+    assert by_field["primary_pathology_grade"]["virtual_missing"] is True
+    assert by_field["primary_er"]["virtual_missing"] is True
     assert by_field["primary_pr"]["virtual_missing"] is True
     assert "primary_pr_detail" not in by_field
 
